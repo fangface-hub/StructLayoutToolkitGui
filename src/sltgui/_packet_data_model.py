@@ -1,0 +1,458 @@
+"""Capture packet extraction and IP fragment reassembly."""
+from __future__ import annotations
+
+import ipaddress
+import struct
+from collections.abc import Callable
+from dataclasses import dataclass
+from importlib import import_module
+from pathlib import Path
+
+from sltcodec import decode
+from sltcore import virtual_bytearray
+
+if __package__:
+    from .resources import load_pcap_layout, load_pcapng_layout
+else:
+    resources_module = import_module("resources")
+    load_pcap_layout = resources_module.load_pcap_layout
+    load_pcapng_layout = resources_module.load_pcapng_layout
+
+
+@dataclass(frozen=True)
+class PacketFragment:
+    """Location of one IP payload fragment in the capture file."""
+
+    sequence: int
+    timestamps: dict[str, object]
+    capture_offset: int
+    payload_offset: int
+    length: int
+    more_fragments: bool
+
+
+@dataclass
+class ReassembledPacket:
+    """One complete or partial reassembled IP payload."""
+
+    sequence: int
+    timestamps: dict[str, object]
+    key: tuple
+    ip_version: int
+    source_bytes: bytes
+    destination_bytes: bytes
+    protocol: int
+    identification: int | None
+    fragments: list[PacketFragment]
+    data: virtual_bytearray
+    complete: bool
+
+    @property
+    def source(self) -> str:
+        return str(ipaddress.ip_address(self.source_bytes))
+
+    @property
+    def destination(self) -> str:
+        return str(ipaddress.ip_address(self.destination_bytes))
+
+    def replace_data(
+        self,
+        capture_data: bytearray,
+        data: bytes | bytearray | virtual_bytearray,
+    ) -> None:
+        """Write same-length reassembled data back to all source fragments."""
+        if not self.complete:
+            raise ValueError("Incomplete fragmented packets cannot be edited.")
+        if len(data) != len(self.data):
+            raise ValueError("Encoded data must keep the reassembled length.")
+
+        del capture_data
+        if data is not self.data:
+            self.data.write_slice(0, data)
+        self._update_transport_checksum(self.data)
+
+    def _update_transport_checksum(self, data: virtual_bytearray) -> None:
+        checksum_offset = {6: 16, 17: 6, 1: 2, 58: 2}.get(self.protocol)
+        if checksum_offset is None or len(data) < checksum_offset + 2:
+            return
+        data.write_slice(checksum_offset, b"\x00\x00")
+        if self.protocol == 1:
+            checksum_data = data
+        elif self.ip_version == 4:
+            checksum_data = virtual_bytearray((
+                self.source_bytes,
+                self.destination_bytes,
+                bytes((0, self.protocol)),
+                len(data).to_bytes(2, "big"),
+                data,
+            ))
+        else:
+            checksum_data = virtual_bytearray((
+                self.source_bytes,
+                self.destination_bytes,
+                len(data).to_bytes(4, "big"),
+                b"\x00\x00\x00",
+                bytes((self.protocol, )),
+                data,
+            ))
+        checksum = internet_checksum(checksum_data)
+        data.write_slice(checksum_offset, checksum.to_bytes(2, "big"))
+
+
+@dataclass(frozen=True)
+class _RawFragment:
+    sequence: int
+    timestamps: dict[str, object]
+    key: tuple
+    ip_version: int
+    source: bytes
+    destination: bytes
+    protocol: int
+    identification: int | None
+    offset: int
+    more_fragments: bool
+    capture_offset: int
+    data: virtual_bytearray
+
+
+class CaptureDocument:
+    """Decoded capture data with reassembled IP payloads."""
+
+    def __init__(
+        self,
+        data: bytes | bytearray,
+        capture_format: str,
+        decode_transform: Callable[[object], object] | None = None,
+    ) -> None:
+        self.data = data if isinstance(data, bytearray) else bytearray(data)
+        self.capture_format = capture_format
+        layout = (load_pcap_layout()
+                  if capture_format == "pcap" else load_pcapng_layout())
+        self.struct_instance = decode(layout, self.data)
+        if decode_transform is not None:
+            self.struct_instance = decode_transform(self.struct_instance)
+        frame_timestamps = _frame_timestamps(self.struct_instance)
+        frames = (_pcap_frames(self.data)
+                  if capture_format == "pcap" else _pcapng_frames(self.data))
+        fragments = []
+        for sequence, (offset, length, link_type) in enumerate(frames):
+            fragment = _extract_ip_fragment(
+                self.data,
+                offset,
+                length,
+                link_type,
+                sequence,
+                frame_timestamps[sequence]
+                if sequence < len(frame_timestamps) else {},
+            )
+            if fragment is not None:
+                fragments.append(fragment)
+        self.packets = _reassemble(fragments)
+
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes | bytearray,
+        decode_transform: Callable[[object], object] | None = None,
+    ) -> "CaptureDocument":
+        """Detect and decode a PCAP or PCAPNG byte stream."""
+        magic = bytes(data[:4])
+        if magic == b"\x0a\x0d\x0d\x0a":
+            return cls(data, "pcapng", decode_transform)
+        if magic in {
+                b"\xd4\xc3\xb2\xa1",
+                b"\xa1\xb2\xc3\xd4",
+                b"\x4d\x3c\xb2\xa1",
+                b"\xa1\xb2\x3c\x4d",
+        }:
+            return cls(data, "pcap", decode_transform)
+        raise ValueError("The file is not a supported PCAP or PCAPNG capture.")
+
+    @classmethod
+    def open(
+        cls,
+        path: str | Path,
+        decode_transform: Callable[[object], object] | None = None,
+    ) -> "CaptureDocument":
+        return cls.from_bytes(bytearray(Path(path).read_bytes()),
+                              decode_transform)
+
+    def save(self, path: str | Path) -> None:
+        Path(path).write_bytes(self.data)
+
+
+def _frame_timestamps(instance: object) -> list[dict[str, object]]:
+    timestamps = []
+
+    def timestamp_values(field: object) -> dict[str, object]:
+        name = field.field_def.name
+        value = field.value
+        child_values = {
+            child.field_def.name: child.value
+            for child in getattr(value, "field_instances", ())
+        }
+        if name == "pcap_timestamp":
+            display_value = getattr(value, "display_value", None)
+            if display_value is not None:
+                return {"timestamp": display_value}
+            seconds = child_values["timestamp_seconds"]
+            nanoseconds = child_values["timestamp_nanoseconds"]
+            timestamp = (seconds if isinstance(seconds, str) else
+                         f"{seconds}.{nanoseconds:09d}")
+            return {"timestamp": timestamp}
+        if name != "timestamp":
+            return ({name: value} if name.startswith("timestamp_") else {})
+        display_value = getattr(value, "display_value", None)
+        if display_value is not None:
+            return {name: display_value}
+        high = child_values["high"]
+        low = child_values["low"]
+        return {name: high if isinstance(high, str) else high << 32 | low}
+
+    def visit(current: object) -> None:
+        fields = getattr(current, "field_instances", ())
+        names = {field.field_def.name for field in fields}
+        if "packet_data" in names:
+            values = {}
+            for field in fields:
+                values.update(timestamp_values(field))
+            timestamps.append(values)
+            return
+        for field in fields:
+            if hasattr(field.value, "field_instances"):
+                visit(field.value)
+
+    visit(instance)
+    return timestamps
+
+
+def internet_checksum(data: bytes | bytearray | virtual_bytearray, ) -> int:
+    """Return the RFC 1071 one's-complement checksum."""
+    total = 0
+    high_byte = None
+    for value in data:
+        if high_byte is None:
+            high_byte = value
+        else:
+            total += high_byte << 8 | value
+            high_byte = None
+    if high_byte is not None:
+        total += high_byte << 8
+    while total >> 16:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
+
+
+def _pcap_frames(data: bytearray) -> list[tuple[int, int, int]]:
+    magic = bytes(data[:4])
+    endian = "<" if magic in {b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"} else ">"
+    if len(data) < 24:
+        raise ValueError("Truncated PCAP global header.")
+    link_type = struct.unpack_from(f"{endian}I", data, 20)[0] & 0xFFFF
+    frames = []
+    offset = 24
+    while offset < len(data):
+        if offset + 16 > len(data):
+            raise ValueError("Truncated PCAP packet header.")
+        captured_length = struct.unpack_from(f"{endian}I", data, offset + 8)[0]
+        frame_offset = offset + 16
+        if frame_offset + captured_length > len(data):
+            raise ValueError("Truncated PCAP packet data.")
+        frames.append((frame_offset, captured_length, link_type))
+        offset = frame_offset + captured_length
+    return frames
+
+
+def _pcapng_frames(data: bytearray) -> list[tuple[int, int, int]]:
+    frames = []
+    interfaces: list[tuple[int, int]] = []
+    endian = "<"
+    offset = 0
+    while offset < len(data):
+        if offset + 12 > len(data):
+            raise ValueError("Truncated PCAPNG block header.")
+        if data[offset:offset + 4] == b"\x0a\x0d\x0d\x0a":
+            byte_order_magic = bytes(data[offset + 8:offset + 12])
+            if byte_order_magic == b"\x4d\x3c\x2b\x1a":
+                endian = "<"
+            elif byte_order_magic == b"\x1a\x2b\x3c\x4d":
+                endian = ">"
+            else:
+                raise ValueError("Invalid PCAPNG byte-order magic.")
+            interfaces = []
+        block_type, block_length = struct.unpack_from(f"{endian}II", data,
+                                                      offset)
+        if block_length < 12 or block_length % 4:
+            raise ValueError("Invalid PCAPNG block length.")
+        if offset + block_length > len(data):
+            raise ValueError("Truncated PCAPNG block.")
+        if block_type == 1 and block_length >= 20:
+            link_type = struct.unpack_from(f"{endian}H", data, offset + 8)[0]
+            snap_length = struct.unpack_from(f"{endian}I", data, offset + 12)[0]
+            interfaces.append((link_type, snap_length))
+        elif block_type == 6 and block_length >= 32:
+            interface_id, captured_length = struct.unpack_from(
+                f"{endian}I8xI", data, offset + 8)
+            if interface_id < len(interfaces):
+                link_type = interfaces[interface_id][0]
+                if captured_length <= block_length - 32:
+                    frames.append((offset + 28, captured_length, link_type))
+        elif block_type == 3 and block_length >= 16 and interfaces:
+            original_length = struct.unpack_from(f"{endian}I", data,
+                                                 offset + 8)[0]
+            link_type, snap_length = interfaces[0]
+            captured_length = min(original_length, snap_length,
+                                  block_length - 16)
+            frames.append((offset + 12, captured_length, link_type))
+        offset += block_length
+    return frames
+
+
+def _extract_ip_fragment(
+    capture: bytearray,
+    frame_offset: int,
+    frame_length: int,
+    link_type: int,
+    sequence: int,
+    timestamps: dict[str, object],
+) -> _RawFragment | None:
+    if link_type != 1 or frame_length < 14:
+        return None
+    frame_end = frame_offset + frame_length
+    cursor = frame_offset + 12
+    ether_type = int.from_bytes(capture[cursor:cursor + 2], "big")
+    cursor += 2
+    while ether_type in {0x8100, 0x88A8}:
+        if cursor + 4 > frame_end:
+            return None
+        ether_type = int.from_bytes(capture[cursor + 2:cursor + 4], "big")
+        cursor += 4
+    if ether_type == 0x0800:
+        return _extract_ipv4(capture, cursor, frame_end, sequence, timestamps)
+    if ether_type == 0x86DD:
+        return _extract_ipv6(capture, cursor, frame_end, sequence, timestamps)
+    return None
+
+
+def _extract_ipv4(capture: bytearray, offset: int, end: int, sequence: int,
+                  timestamps: dict[str, object]) -> _RawFragment | None:
+    if offset + 20 > end or capture[offset] >> 4 != 4:
+        return None
+    header_length = (capture[offset] & 0x0F) * 4
+    total_length = int.from_bytes(capture[offset + 2:offset + 4], "big")
+    if header_length < 20 or total_length < header_length:
+        return None
+    payload_start = offset + header_length
+    payload_end = min(offset + total_length, end)
+    fragment_bits = int.from_bytes(capture[offset + 6:offset + 8], "big")
+    fragment_offset = (fragment_bits & 0x1FFF) * 8
+    more_fragments = bool(fragment_bits & 0x2000)
+    source = bytes(capture[offset + 12:offset + 16])
+    destination = bytes(capture[offset + 16:offset + 20])
+    protocol = capture[offset + 9]
+    identification = int.from_bytes(capture[offset + 4:offset + 6], "big")
+    key = ((4, source, destination, protocol,
+            identification) if fragment_offset or more_fragments else
+           (4, sequence))
+    payload = virtual_bytearray((capture, ))[payload_start:payload_end]
+    return _RawFragment(sequence, timestamps, key, 4, source, destination,
+                        protocol, identification, fragment_offset,
+                        more_fragments, payload_start, payload)
+
+
+def _extract_ipv6(capture: bytearray, offset: int, end: int, sequence: int,
+                  timestamps: dict[str, object]) -> _RawFragment | None:
+    if offset + 40 > end or capture[offset] >> 4 != 6:
+        return None
+    payload_length = int.from_bytes(capture[offset + 4:offset + 6], "big")
+    packet_end = min(offset + 40 + payload_length, end)
+    source = bytes(capture[offset + 8:offset + 24])
+    destination = bytes(capture[offset + 24:offset + 40])
+    next_header = capture[offset + 6]
+    cursor = offset + 40
+    while next_header in {0, 43, 60, 51}:
+        if cursor + 2 > packet_end:
+            return None
+        following = capture[cursor]
+        extension_length = ((capture[cursor + 1] + 2) *
+                            4 if next_header == 51 else
+                            (capture[cursor + 1] + 1) * 8)
+        cursor += extension_length
+        next_header = following
+    if next_header == 44:
+        if cursor + 8 > packet_end:
+            return None
+        protocol = capture[cursor]
+        fragment_bits = int.from_bytes(capture[cursor + 2:cursor + 4], "big")
+        fragment_offset = ((fragment_bits >> 3) & 0x1FFF) * 8
+        more_fragments = bool(fragment_bits & 1)
+        identification = int.from_bytes(capture[cursor + 4:cursor + 8], "big")
+        cursor += 8
+        key = (6, source, destination, protocol, identification)
+    else:
+        protocol = next_header
+        fragment_offset = 0
+        more_fragments = False
+        identification = None
+        key = (6, sequence)
+    payload = virtual_bytearray((capture, ))[cursor:packet_end]
+    return _RawFragment(sequence, timestamps, key, 6, source, destination,
+                        protocol, identification, fragment_offset,
+                        more_fragments, cursor, payload)
+
+
+def _reassemble(fragments: list[_RawFragment]) -> list[ReassembledPacket]:
+    groups: dict[tuple, list[_RawFragment]] = {}
+    for fragment in fragments:
+        groups.setdefault(fragment.key, []).append(fragment)
+
+    packets = []
+    for group in groups.values():
+        group.sort(key=lambda fragment: (fragment.offset, fragment.sequence))
+        expected_length = max(
+            (fragment.offset + len(fragment.data)
+             for fragment in group if not fragment.more_fragments),
+            default=None)
+        data_length = expected_length or max(
+            fragment.offset + len(fragment.data) for fragment in group)
+        chunks = []
+        cursor = 0
+        has_gap = False
+        locations = []
+        for fragment in group:
+            fragment_end = min(data_length,
+                               fragment.offset + len(fragment.data))
+            length = fragment_end - fragment.offset
+            locations.append(
+                PacketFragment(fragment.sequence, fragment.timestamps,
+                               fragment.capture_offset, fragment.offset, length,
+                               fragment.more_fragments))
+            if fragment.offset > cursor:
+                chunks.append(bytes(fragment.offset - cursor))
+                has_gap = True
+                cursor = fragment.offset
+            if fragment_end > cursor:
+                chunk_start = cursor - fragment.offset
+                chunks.append(fragment.data[chunk_start:length])
+                cursor = fragment_end
+        if cursor < data_length:
+            chunks.append(bytes(data_length - cursor))
+            has_gap = True
+        data = virtual_bytearray(chunks)
+        first = group[0]
+        packets.append(
+            ReassembledPacket(
+                sequence=min(fragment.sequence for fragment in group),
+                timestamps=first.timestamps,
+                key=first.key,
+                ip_version=first.ip_version,
+                source_bytes=first.source,
+                destination_bytes=first.destination,
+                protocol=first.protocol,
+                identification=first.identification,
+                fragments=locations,
+                data=data,
+                complete=expected_length is not None and not has_gap,
+            ))
+    packets.sort(key=lambda packet: packet.sequence)
+    return packets
