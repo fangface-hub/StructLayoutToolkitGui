@@ -1,0 +1,48 @@
+[project]
+name = "sltgui"
+version = "0.2.0"
+description = "GUI for visualizing and inspecting binary structure layouts defined by StructLayoutToolkit. Provides a hierarchical tree view, precise offset/size display, and interactive inspection of parsed struct instances."
+readme = "README_pypi.md"
+requires-python = ">=3.14"
+dependencies = [
+    "sltcalc>=0.1.0",
+    "sltcodec>=2.1.0",
+    "sltcore>=1.5.0",
+    "tkinterex>=1.1.3",
+    "treeviewex>=1.0.2",
+]
+
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "fangface" }
+]
+keywords = ["struct", "byte", "layout", "serialization", "deserialization"]
+
+[project.urls]
+Homepage = "https://github.com/fangface-hub/StructLayoutToolkitGui"
+Documentation = "https://readthedocs.org"
+Repository = "https://github.com/fangface-hub/StructLayoutToolkitGui"
+Issues = "https://github.com/fangface-hub/StructLayoutToolkitGui/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sltgui"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
