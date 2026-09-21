@@ -24,7 +24,6 @@ def test_hex_is_the_last_packet_list_column():
     """The last column in the packet list and detail view should be 'hex'."""
     assert PacketDataEditorWindow.COLUMNS[-1] == "hex"
     assert PacketDataEditorWindow.DETAIL_COLUMNS[-1] == "hex"
-    assert PacketDataEditorWindow.PACKET_HEX_COLUMN_ID == "#10"
 
 
 def test_packet_editor_does_not_depend_on_binary_editor():
@@ -154,32 +153,6 @@ def test_open_capture_applies_decode_plugin(monkeypatch, tmp_path):
     assert progress_titles == ["Decoding and reassembling capture..."]
 
 
-def test_packet_hex_edit_writes_back_in_this_window():
-    """Editing the packet hex view should write back changes to the packet."""
-    editor = object.__new__(PacketDataEditorWindow)
-    writes = []
-    packet = types.SimpleNamespace(
-        sequence=4,
-        replace_data=lambda capture, data: writes.append((capture, data)),
-    )
-    editor.document = types.SimpleNamespace(data="capture", packets=[packet])
-    editor._packet_index_by_row_id = {"0": 0}
-    editor._packet_hex_row_id = "0"
-    editor._packet_hex_original_text = "00 01"
-    refreshes = []
-    editor._refresh_packets = lambda sequence: refreshes.append(sequence)
-    decodes = []
-    editor._decode_selected_packet = lambda: decodes.append(True)
-    event = types.SimpleNamespace(widget=types.SimpleNamespace(
-        get=lambda: "AA BB"))
-
-    editor._on_packet_hex_finished(event)
-
-    assert writes == [("capture", b"\xaa\xbb")]
-    assert refreshes == [4]
-    assert decodes == [True]
-
-
 def test_packet_tree_nests_fragment_breakdown():
     """The packet tree should correctly nest fragment breakdowns."""
 
@@ -260,8 +233,6 @@ def test_packet_tree_nests_fragment_breakdown():
     assert second_values == (4, "second", "", "", "", "", "", 2, "Offset 2",
                              "CC DD")
     assert editor._packet_index_by_row_id["0:fragment:1"] == 0
-    assert (("0:fragment:1", PacketDataEditorWindow.PACKET_HEX_COLUMN_ID),
-            True) in editor.tree.readonly_cells
 
 
 def test_packet_tree_hides_single_fragment_breakdown():
@@ -425,6 +396,94 @@ def test_unmatched_packet_is_hex_only(monkeypatch):
     assert labels == ["Payload: Hex only"]
 
 
+def test_unmatched_packet_detail_is_grouped_by_bytes_per_row():
+    """Raw payload rows use the selected byte count."""
+
+    class DetailTreeRecorder:
+
+        def __init__(self):
+            self.rows = []
+            self.readonly = {}
+
+        def get_children(self):
+            return ()
+
+        def delete(self, *_row_ids):
+            pass
+
+        def insert(self, parent, _position, **options):
+            self.rows.append((parent, options))
+
+        def set_readonly_column(self, column_id, readonly=True):
+            self.readonly[column_id] = readonly
+
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.detail_tree = DetailTreeRecorder()
+    editor.bytes_per_row_combo = types.SimpleNamespace(
+        configure=lambda **_kwargs: None)
+    editor.bytes_per_row = 4
+    editor.struct_instance = None
+    editor._selected_packet = lambda: types.SimpleNamespace(
+        complete=True,
+        data=bytes.fromhex("001122334455"),
+    )
+
+    editor._refresh_detail_tree()
+
+    assert [options["iid"] for _parent, options in editor.detail_tree.rows
+            ] == ["raw-0", "raw-4"]
+    assert [options["values"]
+            for _parent, options in editor.detail_tree.rows] == [
+                ("0,0", "", "", "", "4,0", "00 11 22 33"),
+                ("4,0", "", "", "", "2,0", "44 55"),
+            ]
+    assert editor.detail_tree.readonly["#4"] is True
+    assert editor.detail_tree.readonly["#6"] is False
+
+
+def test_raw_detail_hex_edit_writes_back_to_packet():
+    """Editing a raw payload row replaces the selected packet data."""
+    editor = object.__new__(PacketDataEditorWindow)
+    writes = []
+    packet = types.SimpleNamespace(
+        sequence=3,
+        complete=True,
+        data=bytes.fromhex("001122334455"),
+        replace_data=lambda capture, data: writes.append((capture, data)),
+    )
+    editor.document = types.SimpleNamespace(data="capture")
+    editor.struct_instance = None
+    editor.bytes_per_row = 4
+    editor._detail_raw_row_id = "raw-0"
+    editor._detail_raw_original_text = "00 11 22 33"
+    editor._selected_packet = lambda: packet
+    refreshes = []
+    editor._refresh_packets = lambda sequence: refreshes.append(sequence)
+    editor._decode_selected_packet = lambda: None
+    event = types.SimpleNamespace(widget=types.SimpleNamespace(
+        get=lambda: "AA BB CC DD"))
+
+    editor._on_detail_raw_hex_finished(event)
+
+    assert writes == [("capture", bytes.fromhex("AABBCCDD4455"))]
+    assert refreshes == [3]
+
+
+def test_bytes_per_row_change_refreshes_only_raw_detail():
+    """Changing row size rebuilds the lower pane only in raw mode."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.bytes_per_row = 4
+    editor.bytes_per_row_combo = types.SimpleNamespace(get=lambda: "8")
+    refreshes = []
+    editor._refresh_detail_tree = lambda: refreshes.append(True)
+    editor.struct_instance = None
+
+    editor._on_bytes_per_row_changed(types.SimpleNamespace())
+
+    assert editor.bytes_per_row == 8
+    assert refreshes == [True]
+
+
 def test_run_with_progress_delegates_to_shared_dialog(monkeypatch):
     """Progress work is delegated with the editor as the dialog parent."""
     editor = object.__new__(PacketDataEditorWindow)
@@ -496,65 +555,6 @@ def test_selected_packet_handles_empty_and_unknown_selections():
     assert editor._selected_packet() is None
     assert editor._selected_packet() is None
     assert editor._selected_packet() is packet
-
-
-def test_packet_edit_start_only_tracks_hex_column():
-    """Only the editable packet hex cell starts packet data tracking."""
-    editor = object.__new__(PacketDataEditorWindow)
-    editor._packet_hex_row_id = None
-    editor._packet_hex_original_text = ""
-    editor.tree = types.SimpleNamespace(
-        get_cell_value=lambda cell: f"value:{cell[0]}")
-
-    editor._on_packet_edit_started(("row", "#1"))
-    assert editor._packet_hex_row_id is None
-
-    editor._on_packet_edit_started(("row", editor.PACKET_HEX_COLUMN_ID))
-    assert editor._packet_hex_row_id == "row"
-    assert editor._packet_hex_original_text == "value:row"
-
-
-def test_packet_hex_finish_ignores_stale_or_unchanged_edits():
-    """Stale, unchanged, and unmapped edits have no write-back effects."""
-    editor = object.__new__(PacketDataEditorWindow)
-    editor.document = types.SimpleNamespace(data=b"capture", packets=[])
-    editor._packet_index_by_row_id = {}
-    editor._packet_hex_original_text = "AA"
-    event = types.SimpleNamespace(widget=types.SimpleNamespace(
-        get=lambda: " AA "))
-
-    for row_id in (None, "row", "unknown"):
-        editor._packet_hex_row_id = row_id
-        editor._on_packet_hex_finished(event)
-
-    assert editor._packet_hex_row_id is None
-
-
-def test_packet_hex_finish_reports_invalid_hex(monkeypatch):
-    """Invalid packet hex is reported and the packet view is restored."""
-    editor = object.__new__(PacketDataEditorWindow)
-    packet = types.SimpleNamespace(sequence=7)
-    packet.replace_data = lambda *_args: None
-    editor.document = types.SimpleNamespace(data=b"capture", packets=[packet])
-    editor._packet_index_by_row_id = {"row": 0}
-    editor._packet_hex_row_id = "row"
-    editor._packet_hex_original_text = "AA"
-    refreshes = []
-    editor._refresh_packets = refreshes.append
-    decodes = []
-    editor._decode_selected_packet = lambda: decodes.append(True)
-    errors = []
-    monkeypatch.setattr(packet_editor_module.messagebox, "showerror",
-                        lambda *args, **kwargs: errors.append((args, kwargs)))
-    event = types.SimpleNamespace(widget=types.SimpleNamespace(
-        get=lambda: "not hex"))
-
-    editor._on_packet_hex_finished(event)
-
-    assert errors[0][0][0] == "Hex Error"
-    assert errors[0][1]["parent"] is editor
-    assert refreshes == [7]
-    assert decodes == [True]
 
 
 def test_save_capture_uses_existing_path_or_save_as():
@@ -835,7 +835,11 @@ def test_refresh_detail_tree_clears_and_inserts_current_instance(monkeypatch):
     editor.detail_tree = types.SimpleNamespace(
         get_children=lambda: ("old-1", "old-2"),
         delete=lambda *rows: deleted.append(rows),
+        set_readonly_column=lambda *_args, **_kwargs: None,
     )
+    editor.bytes_per_row_combo = types.SimpleNamespace(
+        configure=lambda **_kwargs: None)
+    editor._selected_packet = lambda: None
     inserted = []
     editor._insert_instance = lambda *args: inserted.append(args)
     monkeypatch.setattr(packet_editor_module, "InfoSize", lambda: "zero")
@@ -931,9 +935,8 @@ def test_refresh_packets_handles_no_document():
 
 
 def test_refresh_packets_marks_incomplete_packet_and_restores_selection():
-    """Incomplete packets are readonly and requested selection is restored."""
+    """Incomplete packets are labeled and requested selection is restored."""
     rows = []
-    readonly = []
     selections = []
     statuses = []
     editor = object.__new__(PacketDataEditorWindow)
@@ -942,7 +945,6 @@ def test_refresh_packets_marks_incomplete_packet_and_restores_selection():
         delete=lambda *_rows: None,
         insert=lambda parent, _position, **options: rows.append(
             (parent, options)),
-        set_readonly_cell=lambda cell, value: readonly.append((cell, value)),
         selection_set=selections.append,
     )
     editor.status_label = types.SimpleNamespace(
@@ -962,11 +964,10 @@ def test_refresh_packets_marks_incomplete_packet_and_restores_selection():
     )
     editor.document = types.SimpleNamespace(data=b"", packets=[packet])
 
-    editor._refresh_packets(selected_sequence=5)
+    editor._refresh_packets(5)
 
     values = rows[0][1]["values"]
     assert values[5:9] == ("99", "", 1, "Incomplete")
-    assert readonly == [(('0', editor.PACKET_HEX_COLUMN_ID), True)]
     assert selections == ["0"]
     assert statuses == ["incomplete.pcap: 1 IP packet(s)"]
 
@@ -1018,21 +1019,6 @@ def test_nested_treeview_notifies_when_edit_starts(monkeypatch):
                         lambda _self, _event: None)
     assert tree.on_double_click(event) is None
     assert notifications == [cell]
-
-
-def test_packet_hex_finish_ignores_unmapped_changed_row():
-    """A removed row cannot write stale edited text into another packet."""
-    editor = object.__new__(PacketDataEditorWindow)
-    editor.document = types.SimpleNamespace(data=b"capture", packets=[])
-    editor._packet_index_by_row_id = {}
-    editor._packet_hex_row_id = "removed"
-    editor._packet_hex_original_text = "AA"
-    event = types.SimpleNamespace(widget=types.SimpleNamespace(
-        get=lambda: "BB"))
-
-    editor._on_packet_hex_finished(event)
-
-    assert editor._packet_hex_row_id is None
 
 
 def test_window_initialization_sets_paths_state_and_builders(
@@ -1142,6 +1128,9 @@ def test_build_ui_configures_trees_and_edit_bindings(monkeypatch):
         def configure(self, *args, **kwargs):
             self.calls.append(("configure", args, kwargs))
 
+        def set(self, value):
+            self.calls.append(("set", (value, ), {}))
+
         def pack(self, *args, **kwargs):
             self.calls.append(("pack", args, kwargs))
 
@@ -1171,11 +1160,14 @@ def test_build_ui_configures_trees_and_edit_bindings(monkeypatch):
     style_calls = []
     monkeypatch.setattr(packet_editor_module.ttk, "Style", StyleRecorder)
     monkeypatch.setattr(packet_editor_module.ttk, "Label", WidgetRecorder)
+    monkeypatch.setattr(packet_editor_module.ttk, "Frame", WidgetRecorder)
+    monkeypatch.setattr(packet_editor_module.ttk, "Combobox", WidgetRecorder)
     monkeypatch.setattr(packet_editor_module.ttk, "Panedwindow", WidgetRecorder)
     monkeypatch.setattr(packet_editor_module.ttk, "Labelframe", WidgetRecorder)
     monkeypatch.setattr(packet_editor_module, "_NestedTreeviewEx",
                         WidgetRecorder)
     editor = object.__new__(PacketDataEditorWindow)
+    editor.bytes_per_row = 4
 
     editor._build_ui()
 
@@ -1186,11 +1178,9 @@ def test_build_ui_configures_trees_and_edit_bindings(monkeypatch):
     detail_readonly = [
         call[1][0] for call in editor.detail_tree.calls if call[0] == "readonly"
     ]
-    assert packet_readonly == [f"#{index}" for index in range(1, 10)]
-    assert detail_readonly == ["#1", "#2", "#3", "#5", "#6"]
-    assert editor.tree.on_edit_started.__self__ is editor
-    assert editor.tree.on_edit_started.__func__ is (
-        PacketDataEditorWindow._on_packet_edit_started)
+    assert packet_readonly == [f"#{index}" for index in range(1, 11)]
+    assert detail_readonly == ["#1", "#2", "#3", "#5", "#4", "#6"]
+    assert editor.tree.on_edit_started is None
     assert editor.detail_tree.on_edit_started.__self__ is editor
     assert editor.detail_tree.on_edit_started.__func__ is (
         PacketDataEditorWindow._on_detail_edit_started)

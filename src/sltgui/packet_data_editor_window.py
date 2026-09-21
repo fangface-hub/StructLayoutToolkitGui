@@ -101,8 +101,8 @@ class PacketDataEditorWindow(tk.Toplevel):
         "hex",
     )
     DETAIL_COLUMNS = ("offset", "name", "type", "value", "size", "hex")
-    PACKET_HEX_COLUMN_ID = "#10"
     DETAIL_VALUE_COLUMN_ID = "#4"
+    DETAIL_HEX_COLUMN_ID = "#6"
     PROTOCOL_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP", 58: "ICMPv6"}
 
     def _run_with_progress(self, title: str, worker_fn):
@@ -145,12 +145,13 @@ class PacketDataEditorWindow(tk.Toplevel):
         self.payload_struct_defs = []
         self.struct_layout: StructLayout | None = None
         self.struct_instance = None
-        self._packet_hex_row_id: str | None = None
-        self._packet_hex_original_text = ""
         self._packet_index_by_row_id: dict[str, int] = {}
         self._detail_value_row_id: str | None = None
         self._detail_value_original_text = ""
+        self._detail_raw_row_id: str | None = None
+        self._detail_raw_original_text = ""
         self._detail_path_by_row_id: dict[str, tuple[int, ...]] = {}
+        self.bytes_per_row = 4
         self._lua_plugin_manager = LuaPluginManager(self.apl_dir / "plugins")
 
         self.title("Packet Data Editor")
@@ -236,15 +237,26 @@ class PacketDataEditorWindow(tk.Toplevel):
         for column, width in zip(self.COLUMNS, widths, strict=True):
             self.tree.heading(column, text=headings[column])
             self.tree.column(column, width=width, minwidth=40, anchor=tk.W)
-        for column_id in range(1, len(self.COLUMNS)):
+        for column_id in range(1, len(self.COLUMNS) + 1):
             self.tree.set_readonly_column(f"#{column_id}", True)
         self.tree.pack(fill=tk.BOTH, expand=True)
-        self.tree.on_edit_started = self._on_packet_edit_started
-        self.tree.entry.bind("<Return>", self._on_packet_hex_finished, add="+")
-        self.tree.entry.bind("<FocusOut>",
-                             self._on_packet_hex_finished,
-                             add="+")
         self.tree.bind("<<TreeviewSelect>>", self._on_packet_selected)
+
+        detail_toolbar = ttk.Frame(detail_frame, padding=(6, 4))
+        detail_toolbar.pack(fill=tk.X)
+        ttk.Label(detail_toolbar, text="Bytes/row:").pack(side=tk.LEFT)
+        self.bytes_per_row_combo = ttk.Combobox(
+            detail_toolbar,
+            state="readonly",
+            width=4,
+            values=(1, 2, 4, 8, 16),
+        )
+        self.bytes_per_row_combo.set(str(self.bytes_per_row))
+        self.bytes_per_row_combo.pack(side=tk.LEFT, padx=(4, 0))
+        self.bytes_per_row_combo.bind(
+            "<<ComboboxSelected>>",
+            self._on_bytes_per_row_changed,
+        )
 
         self.detail_tree = _NestedTreeviewEx(
             detail_frame,
@@ -262,10 +274,15 @@ class PacketDataEditorWindow(tk.Toplevel):
                                  detail_widths,
                                  strict=True):
             self.detail_tree.column(column, width=width, anchor=tk.W)
-        for column_id in ("#1", "#2", "#3", "#5", "#6"):
-            self.detail_tree.set_readonly_column(column_id, True)
+        self._set_detail_raw_mode(True)
         self.detail_tree.pack(fill=tk.BOTH, expand=True)
         self.detail_tree.on_edit_started = self._on_detail_edit_started
+        self.detail_tree.entry.bind("<Return>",
+                                    self._on_detail_raw_hex_finished,
+                                    add="+")
+        self.detail_tree.entry.bind("<FocusOut>",
+                                    self._on_detail_raw_hex_finished,
+                                    add="+")
         self.detail_tree.entry.bind("<Return>",
                                     self._on_detail_value_finished,
                                     add="+")
@@ -397,34 +414,6 @@ class PacketDataEditorWindow(tk.Toplevel):
         """Return the plugin manager, or a default if none is available."""
         return getattr(self, "_lua_plugin_manager", NO_LUA_PLUGINS)
 
-    def _on_packet_edit_started(self, cell: tuple[str, str]) -> None:
-        """Handle the event when packet editing is started."""
-        if cell[1] != self.PACKET_HEX_COLUMN_ID:
-            return
-        self._packet_hex_row_id = cell[0]
-        self._packet_hex_original_text = self.tree.get_cell_value(cell)
-
-    def _on_packet_hex_finished(self, event: tk.Event) -> None:
-        """Handle the event when packet hex editing is finished."""
-        row_id = self._packet_hex_row_id
-        self._packet_hex_row_id = None
-        if row_id is None or self.document is None:
-            return
-        text = event.widget.get().strip()
-        if text == self._packet_hex_original_text:
-            return
-        packet_index = self._packet_index_by_row_id.get(row_id)
-        if packet_index is None:
-            return
-        packet = self.document.packets[packet_index]
-        try:
-            value = bytes.fromhex(text)
-            packet.replace_data(self.document.data, value)
-        except ValueError as exc:
-            messagebox.showerror("Hex Error", str(exc), parent=self)
-        self._refresh_packets(packet.sequence)
-        self._decode_selected_packet()
-
     def _decode_selected_packet(self) -> None:
         """Decode the currently selected packet, if any, and update the UI."""
         packet = self._selected_packet()
@@ -450,10 +439,42 @@ class PacketDataEditorWindow(tk.Toplevel):
 
     def _on_detail_edit_started(self, cell: tuple[str, str]) -> None:
         """Handle the event when detail editing is started."""
-        if cell[1] != self.DETAIL_VALUE_COLUMN_ID:
+        if cell[1] == self.DETAIL_HEX_COLUMN_ID and cell[0].startswith("raw-"):
+            self._detail_raw_row_id = cell[0]
+            self._detail_raw_original_text = self.detail_tree.get_cell_value(
+                cell)
+        elif cell[1] == self.DETAIL_VALUE_COLUMN_ID:
+            self._detail_value_row_id = cell[0]
+            self._detail_value_original_text = self.detail_tree.get_cell_value(
+                cell)
+
+    def _on_detail_raw_hex_finished(self, event: tk.Event) -> None:
+        """Write an edited raw payload row back to the selected packet."""
+        row_id = self._detail_raw_row_id
+        self._detail_raw_row_id = None
+        packet = self._selected_packet()
+        if (row_id is None or packet is None or self.struct_instance is not None
+                or self.document is None):
             return
-        self._detail_value_row_id = cell[0]
-        self._detail_value_original_text = self.detail_tree.get_cell_value(cell)
+        text = event.widget.get().strip()
+        if text == self._detail_raw_original_text:
+            return
+        offset = int(row_id[4:])
+        byte_count = min(self.bytes_per_row, len(packet.data) - offset)
+        try:
+            values = bytes.fromhex(text)
+            if len(values) != byte_count:
+                raise ValueError(
+                    f"Hex data must contain exactly {byte_count} bytes.")
+            updated_data = bytearray(packet.data)
+            updated_data[offset:offset + byte_count] = values
+            packet.replace_data(self.document.data, bytes(updated_data))
+        except ValueError as exc:
+            messagebox.showerror("Hex Error", str(exc), parent=self)
+            self._refresh_detail_tree()
+            return
+        self._refresh_packets(packet.sequence)
+        self._decode_selected_packet()
 
     def _on_detail_value_finished(self, event: tk.Event) -> None:
         """Handle the event when detail value editing is finished."""
@@ -491,10 +512,53 @@ class PacketDataEditorWindow(tk.Toplevel):
     def _refresh_detail_tree(self) -> None:
         """Refresh the detail tree view to reflect
            the current struct instance."""
+        self._detail_raw_row_id = None
+        self._detail_value_row_id = None
         self._detail_path_by_row_id = {}
         self.detail_tree.delete(*self.detail_tree.get_children())
         if self.struct_instance is not None:
+            self._set_detail_raw_mode(False)
             self._insert_instance(self.struct_instance, "", InfoSize())
+        else:
+            self._set_detail_raw_mode(True)
+            packet = self._selected_packet()
+            if packet is not None and packet.complete:
+                self._insert_raw_payload(packet.data)
+
+    def _on_bytes_per_row_changed(self, _event: tk.Event) -> None:
+        """Rebuild raw payload rows using the selected byte count."""
+        self.bytes_per_row = int(self.bytes_per_row_combo.get())
+        if self.struct_instance is None:
+            self._refresh_detail_tree()
+
+    def _set_detail_raw_mode(self, raw_mode: bool) -> None:
+        """Switch editable detail columns between raw and struct modes."""
+        for column_id in ("#1", "#2", "#3", "#5"):
+            self.detail_tree.set_readonly_column(column_id, True)
+        self.detail_tree.set_readonly_column(self.DETAIL_VALUE_COLUMN_ID,
+                                             raw_mode)
+        self.detail_tree.set_readonly_column(self.DETAIL_HEX_COLUMN_ID,
+                                             not raw_mode)
+        self.bytes_per_row_combo.configure(
+            state="readonly" if raw_mode else "disabled")
+
+    def _insert_raw_payload(self, data: bytes | bytearray) -> None:
+        """Insert raw payload bytes into fixed-width editable rows."""
+        for offset in range(0, len(data), self.bytes_per_row):
+            values = data[offset:offset + self.bytes_per_row]
+            self.detail_tree.insert(
+                "",
+                tk.END,
+                iid=f"raw-{offset}",
+                values=(
+                    f"{offset},0",
+                    "",
+                    "",
+                    "",
+                    f"{len(values)},0",
+                    " ".join(f"{value:02X}" for value in values),
+                ),
+            )
 
     def _insert_instance(
             self,
@@ -606,9 +670,6 @@ class PacketDataEditorWindow(tk.Toplevel):
                 ),
                 open=True,
             )
-            if not packet.complete:
-                self.tree.set_readonly_cell((row_id, self.PACKET_HEX_COLUMN_ID),
-                                            True)
             visible_fragments = (packet.fragments
                                  if len(packet.fragments) > 1 else ())
             for fragment_index, fragment in enumerate(visible_fragments):
@@ -635,8 +696,6 @@ class PacketDataEditorWindow(tk.Toplevel):
                         " ".join(f"{value:02X}" for value in fragment_data),
                     ),
                 )
-                self.tree.set_readonly_cell(
-                    (fragment_row_id, self.PACKET_HEX_COLUMN_ID), True)
             if selected_sequence == packet.sequence:
                 self.tree.selection_set(row_id)
         self.status_label.configure(
