@@ -3,10 +3,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 
 from sltcalc import SltEval
 from sltcodec import EnumDef, StructDef, StructLayout, TypeDict
+
+resources_module = (import_module(".resources", __package__)
+                    if __package__ else import_module("resources"))
+load_pcap_layout = resources_module.load_pcap_layout
+load_pcapng_layout = resources_module.load_pcapng_layout
 
 
 @dataclass
@@ -73,13 +81,32 @@ def packet_eval_env(packet) -> dict:
     }
 
 
+def _enum_eval_env(enum_dict: dict) -> dict:
+    """Return enum definitions in the attribute form supported by SltEval."""
+    return {
+        name: SimpleNamespace(**enum_def.values)
+        for name, enum_def in enum_dict.items()
+    }
+
+
+@lru_cache(maxsize=1)
+def _bundled_enum_eval_env() -> dict:
+    """Return enums bundled with the PCAP and PCAPNG layouts."""
+    enum_dict = {}
+    for layout_loader in (load_pcap_layout, load_pcapng_layout):
+        enum_dict.update(layout_loader().type_dict.enum_dict)
+    return _enum_eval_env(enum_dict)
+
+
 def matching_struct_layout(
     definitions: list[PayloadStructDef],
     packet,
 ) -> StructLayout | None:
     """Return the StructLayout from the first matching definition."""
-    env = packet_eval_env(packet)
     for definition in definitions:
+        env = packet_eval_env(packet)
+        env.update(_bundled_enum_eval_env())
+        env.update(_enum_eval_env(definition.struct_layout.type_dict.enum_dict))
         if SltEval(env).eval(definition.condition):
             return definition.struct_layout
     return None

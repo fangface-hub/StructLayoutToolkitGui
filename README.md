@@ -147,6 +147,10 @@ The expression can use the following packet values:
 | `protocol` | `int` | IPv4 Protocol or final IPv6 Next Header number, such as `6` for TCP or `17` for UDP |
 | `identification` | `int` or `None` | IPv4 Identification or IPv6 Fragment Identification. It is `None` for an unfragmented IPv6 packet |
 
+The enum definitions bundled with `pcap.json` and `pcapng.json` are also
+available by name. Enum members use attribute syntax, such as
+`EtherType.IPV4` and `IpProtocol.UDP`.
+
 Conditions can also use the mathematical expression syntax provided by the
 StructLayoutToolkit sltcore/sltcalc stack. This includes arithmetic,
 comparison, logical, indexing, and bitwise expressions. The safe functions

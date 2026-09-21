@@ -10,6 +10,7 @@ from sltgui._payload_struct_defs import (PayloadStructDef,
                                          matching_struct_layout,
                                          packet_eval_env,
                                          save_payload_struct_defs)
+from sltgui.resources import load_pcap_layout, load_pcapng_layout
 
 
 def _packet(**overrides):
@@ -56,6 +57,28 @@ def test_matching_struct_layout_returns_none_when_no_condition_matches():
     ]
 
     assert matching_struct_layout(definitions, _packet(protocol=17)) is None
+
+
+@pytest.mark.parametrize(
+    "layout_loader, condition",
+    [
+        (load_pcap_layout, "EtherType.IPV4 == 2048"),
+        (load_pcapng_layout, "IpProtocol.UDP == protocol"),
+    ],
+)
+def test_matching_struct_layout_exposes_resource_enums(layout_loader,
+                                                       condition):
+    layout = layout_loader()
+    definition = PayloadStructDef(condition, layout)
+
+    assert matching_struct_layout([definition], _packet()) is layout
+
+
+def test_matching_struct_layout_exposes_bundled_enums_without_layout_enums():
+    layout = StructLayout("payload", TypeDict())
+    definition = PayloadStructDef("EtherType.IPV4 == 2048", layout)
+
+    assert matching_struct_layout([definition], _packet()) is layout
 
 
 def test_payload_struct_definitions_round_trip_json(tmp_path):
