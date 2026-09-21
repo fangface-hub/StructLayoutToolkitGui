@@ -885,13 +885,17 @@ def test_insert_instance_builds_nested_rows_and_paths(monkeypatch):
     ])
     editor = object.__new__(PacketDataEditorWindow)
     editor.detail_tree = DetailTreeRecorder()
+    editor.struct_layout = types.SimpleNamespace(
+        type_dict=types.SimpleNamespace(enum_dict={}))
     editor._detail_path_by_row_id = {}
     editor._selected_packet = lambda: types.SimpleNamespace(data=b"packet")
     monkeypatch.setattr(packet_editor_module, "bits_get",
                         lambda *_args: types.SimpleNamespace(to_bytes=b"\xab"))
     monkeypatch.setattr(packet_editor_module, "format_infosize", str)
     monkeypatch.setattr(packet_editor_module, "format_type", str)
-    monkeypatch.setattr(packet_editor_module, "format_value", str)
+    monkeypatch.setattr(
+        packet_editor_module, "format_field_value",
+        lambda field_instance, _type_dict: str(field_instance.value))
 
     editor._insert_instance(instance, "", 10)
 

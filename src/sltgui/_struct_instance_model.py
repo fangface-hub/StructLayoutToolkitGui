@@ -81,7 +81,7 @@ def replace_instance_value(
     field_instances = list(instance.field_instances)
     field_instance = field_instances[field_index]
     if len(field_path) == 1:
-        value = parse_value(text, field_instance.value)
+        value = parse_field_value(text, field_instance, type_dict)
         updated_field_instance = field_instance.with_value(value, type_dict)
     else:
         value = replace_instance_value(
@@ -93,6 +93,24 @@ def replace_instance_value(
         updated_field_instance = field_instance.with_value(value, type_dict)
     field_instances[field_index] = updated_field_instance
     return replace(instance, field_instances=field_instances)
+
+
+def parse_field_value(
+    text: str,
+    field_instance: object,
+    type_dict: TypeDict,
+) -> object:
+    """Parse a field value, accepting enum names when one is configured."""
+    enum_values = _enum_values(getattr(field_instance, "field_def", None),
+                               type_dict)
+    stripped = text.strip()
+    if enum_values is not None:
+        if stripped in enum_values:
+            return enum_values[stripped]
+        for name, value in enum_values.items():
+            if stripped == f"{name} ({format_value(value)})":
+                return value
+    return parse_value(text, field_instance.value)
 
 
 def parse_value(text: str, current_value: object) -> object:
@@ -140,3 +158,28 @@ def format_value(value: object) -> str:
     if isinstance(value, (bytes, bytearray)):
         return value.hex(" ").upper()
     return str(value)
+
+
+def format_field_value(field_instance: object, type_dict: TypeDict) -> str:
+    """Format a field value with its enum name when available."""
+    value_text = format_value(field_instance.value)
+    enum_values = _enum_values(getattr(field_instance, "field_def", None),
+                               type_dict)
+    if enum_values is None:
+        return value_text
+    for name, value in enum_values.items():
+        if value == field_instance.value:
+            return f"{name} ({value_text})"
+    return value_text
+
+
+def _enum_values(
+    field_def: object,
+    type_dict: TypeDict,
+) -> dict[str, int] | None:
+    """Return the configured enum values for a field, if any."""
+    enum_def_name = getattr(field_def, "enum_def_name", None)
+    if not enum_def_name:
+        return None
+    enum_def = type_dict.enum_dict.get(enum_def_name)
+    return enum_def.values if enum_def is not None else None

@@ -110,19 +110,27 @@ types, EtherTypes, IP protocols, IPv6 extension headers, and application data
 remain available as raw bytes. PCAPNG files with multiple interfaces currently
 use the most recently decoded Interface Description Block's link type.
 
+The bundled layouts define enums for link types, EtherTypes, IP protocol/next
+header numbers, and ARP operations. Enum fields are displayed as `UDP (17)`.
+Their Value cells accept either the enum name, such as `TCP`, or the combined
+display form, such as `TCP (6)`. Unknown values remain numeric.
+
 ## Reassembled Packet Data Editor
 
 Run `python -m sltgui.packet_data_editor_window` to inspect logical IP payloads
 rather than individual capture frames. The independent editor uses the bundled
 PCAP and PCAPNG layouts to validate the capture, supports Ethernet and VLAN
 frames, and reassembles complete IPv4 and IPv6 fragment groups even when
-fragments arrive out of order. Incomplete groups are displayed read-only.
+fragments arrive out of order. The upper TreeviewEx is a read-only packet and
+fragment summary.
 
-The upper TreeviewEx edits complete packet data directly in its Hex column.
 Open **Packet Definition > Payload Struct Definitions** to register ordered
 sltcalc condition and StructLayout pairs. The first matching pair decodes the
 selected packet in the lower TreeviewEx, where field values can be edited in
-place. Packets that match no condition remain available as Hex only.
+place. If no StructLayout matches, the lower pane displays editable raw Hex
+rows. Use **Bytes/row** to group each row into 1, 2, 4, 8, or 16 bytes. Each
+edited row must retain its displayed byte count. Incomplete fragment groups
+remain read-only.
 
 ### Payload Condition Environment
 

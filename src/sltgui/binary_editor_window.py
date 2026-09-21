@@ -18,8 +18,9 @@ from treeviewex import TreeviewEx
 if __package__:
     from ._infosize_utils import format_infosize
     from ._progress_dialog import OperationCanceledError, run_with_progress
-    from ._struct_instance_model import (field_instance_at_path, format_type,
-                                         format_value, minimum_struct_size,
+    from ._struct_instance_model import (field_instance_at_path,
+                                         format_field_value, format_type,
+                                         minimum_struct_size,
                                          replace_instance_field_value,
                                          replace_instance_value)
     from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
@@ -34,8 +35,8 @@ else:
     run_with_progress = progress_module.run_with_progress
     _model = import_module("_struct_instance_model")
     field_instance_at_path = _model.field_instance_at_path
+    format_field_value = _model.format_field_value
     format_type = _model.format_type
-    format_value = _model.format_value
     minimum_struct_size = _model.minimum_struct_size
     replace_instance_field_value = _model.replace_instance_field_value
     replace_instance_value = _model.replace_instance_value
@@ -1097,7 +1098,7 @@ class BinaryEditorWindow(tk.Toplevel):
             field_bytes.hex(" ").upper(),
             field_def.name,
             format_type(field_def.type),
-            format_value(field_instance.value),
+            format_field_value(field_instance, self.struct_layout.type_dict),
             format_infosize(size),
         )
 

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ._infosize_utils import format_infosize
     from ._packet_data_model import CaptureDocument, ReassembledPacket
     from ._payload_struct_defs import matching_struct_layout
-    from ._struct_instance_model import (format_type, format_value,
+    from ._struct_instance_model import (format_field_value, format_type,
                                          replace_instance_value)
     from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
 elif __package__:
@@ -31,8 +31,8 @@ elif __package__:
     format_infosize = import_module("._infosize_utils",
                                     __package__).format_infosize
     instance_model = import_module("._struct_instance_model", __package__)
+    format_field_value = instance_model.format_field_value
     format_type = instance_model.format_type
-    format_value = instance_model.format_value
     replace_instance_value = instance_model.replace_instance_value
     lua_plugins_module = import_module(".lua_plugins", __package__)
     LuaPluginManager = lua_plugins_module.LuaPluginManager
@@ -45,8 +45,8 @@ else:
     matching_struct_layout = payload_defs_module.matching_struct_layout
     format_infosize = import_module("_infosize_utils").format_infosize
     instance_model = import_module("_struct_instance_model")
+    format_field_value = instance_model.format_field_value
     format_type = instance_model.format_type
-    format_value = instance_model.format_value
     replace_instance_value = instance_model.replace_instance_value
     lua_plugins_module = import_module("lua_plugins")
     LuaPluginManager = lua_plugins_module.LuaPluginManager
@@ -582,7 +582,8 @@ class PacketDataEditorWindow(tk.Toplevel):
                     format_infosize(offset),
                     field_def.name,
                     format_type(field_def.type),
-                    format_value(field_instance.value),
+                    format_field_value(field_instance,
+                                       self.struct_layout.type_dict),
                     format_infosize(field_def.size),
                     field_bytes.hex(" ").upper(),
                 ),

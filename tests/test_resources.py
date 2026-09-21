@@ -23,6 +23,12 @@ def test_load_pcap_layout():
         "pcap_file",
     }.issubset(layout.type_dict.struct_dict)
     assert "ethernet_frame" in layout.type_dict.struct_dict
+    assert {"LinkType", "EtherType", "IpProtocol",
+            "ArpOperation"} <= set(layout.type_dict.enum_dict)
+    assert layout.type_dict.enum_dict["IpProtocol"].values["UDP"] == 17
+    assert next(field
+                for field in layout.type_dict.struct_dict["ipv4_packet"].fields
+                if field.name == "protocol").enum_def_name == "IpProtocol"
 
 
 def test_directly_loaded_pcap_contains_packet_structures():
@@ -80,6 +86,11 @@ def test_load_pcapng_layout():
     assert layout.struct_def_name == "pcapng_file"
     assert "pcapng_block" in layout.type_dict.struct_dict
     assert "enhanced_packet_block_body" in layout.type_dict.struct_dict
+    assert {"LinkType", "EtherType", "IpProtocol",
+            "ArpOperation"} <= set(layout.type_dict.enum_dict)
+    assert next(field
+                for field in layout.type_dict.struct_dict["ipv6_packet"].fields
+                if field.name == "next_header").enum_def_name == "IpProtocol"
 
 
 def test_decode_little_endian_pcapng_blocks():

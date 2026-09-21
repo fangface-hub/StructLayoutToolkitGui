@@ -168,7 +168,12 @@ def test_binary_editor_formatters_and_minimum_size(monkeypatch):
     assert module.format_infosize(InfoSize(2, 3)) == "2,3"
     assert module.format_infosize(InfoSize(2, 0)) == "2,0"
     assert module.format_type("uint16") == "uint16"
-    assert module.format_value(b"\x01\x02") == "01 02"
+    raw_field = types.SimpleNamespace(
+        value=b"\x01\x02",
+        field_def=types.SimpleNamespace(enum_def_name=None),
+    )
+    type_dict = types.SimpleNamespace(enum_dict={})
+    assert module.format_field_value(raw_field, type_dict) == "01 02"
 
     struct_def = DummyStructDef([
         DummyFieldDef("id", InfoSize(0, 0), InfoSize(2, 0)),
@@ -329,7 +334,13 @@ def test_binary_editor_formats_and_edits_struct_display_value(monkeypatch):
     )
     instance = DummyStructInstance([DummyFieldInstance(timestamp)])
 
-    assert module.format_value(timestamp) == ("2023-11-14 22:13:20.123456789")
+    timestamp_field = types.SimpleNamespace(
+        value=timestamp,
+        field_def=types.SimpleNamespace(enum_def_name=None),
+    )
+    type_dict = types.SimpleNamespace(enum_dict={})
+    assert module.format_field_value(
+        timestamp_field, type_dict) == ("2023-11-14 22:13:20.123456789")
     updated = module.replace_instance_value(
         instance,
         (0, ),
@@ -338,6 +349,44 @@ def test_binary_editor_formats_and_edits_struct_display_value(monkeypatch):
     )
     assert updated.field_instances[0].value.display_value == (
         "2023-11-14 22:13:21.987654321")
+
+
+def test_binary_editor_formats_and_edits_enum_value(monkeypatch):
+    """Enum fields show their name and accept names while retaining ints."""
+    module = _load_binary_editor_module(monkeypatch)
+
+    @dataclass(frozen=True)
+    class DummyFieldInstance:
+        value: object
+        field_def: object
+
+        def with_value(self, value, _type_dict=None):
+            return type(self)(value, self.field_def)
+
+    @dataclass(frozen=True)
+    class DummyStructInstance:
+        field_instances: list[DummyFieldInstance]
+
+    field_def = types.SimpleNamespace(enum_def_name="IpProtocol")
+    field_instance = DummyFieldInstance(17, field_def)
+    instance = DummyStructInstance([field_instance])
+    type_dict = types.SimpleNamespace(
+        enum_dict={
+            "IpProtocol":
+            types.SimpleNamespace(values={
+                "ICMP": 1,
+                "TCP": 6,
+                "UDP": 17,
+            })
+        })
+
+    assert module.format_field_value(field_instance, type_dict) == "UDP (17)"
+    updated = module.replace_instance_value(instance, (0, ), "TCP", type_dict)
+    assert updated.field_instances[0].value == 6
+
+    updated = module.replace_instance_value(instance, (0, ), "UDP (17)",
+                                            type_dict)
+    assert updated.field_instances[0].value == 17
 
 
 def test_binary_editor_shows_timestamp_on_editable_parent_row(monkeypatch):
@@ -384,6 +433,8 @@ def test_binary_editor_shows_timestamp_on_editable_parent_row(monkeypatch):
     editor = object.__new__(module.BinaryEditorWindow)
     editor.tree = TreeRecorder()
     editor.binary_data = bytearray(8)
+    editor.struct_layout = types.SimpleNamespace(
+        type_dict=types.SimpleNamespace(enum_dict={}))
     editor._instance_path_by_row_id = {}
 
     editor._insert_instance(instance, "", module.InfoSize())
