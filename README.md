@@ -123,6 +123,12 @@ optional headers, data directories, and section headers. The layout defines
 enums for machine types, optional-header formats, subsystems, COFF flags, DLL
 characteristics, and section characteristics.
 
+The Binary Editor also includes a bundled Executable and Linkable Format
+(ELF) layout. Choose **Type Definition > Load Resource > ELF** to inspect
+Linux executables and shared objects. It supports ELF32 and ELF64 headers,
+program headers, section headers, and enums for object type, machine,
+program segment type, section type, and segment or section flags.
+
 ## Reassembled Packet Data Editor
 
 Run `python -m sltgui.packet_data_editor_window` to inspect logical IP payloads

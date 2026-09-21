@@ -5,8 +5,8 @@ from sltcalc import SAFE_FUNCS
 from sltcodec import decode, load_struct_layout
 from sltcore import InfoSize
 
-from sltgui.resources import (load_pcap_layout, load_pcapng_layout,
-                              load_pe_layout)
+from sltgui.resources import (load_elf_layout, load_pcap_layout,
+                              load_pcapng_layout, load_pe_layout)
 
 
 def _field_value(instance, name):
@@ -108,6 +108,59 @@ def test_load_pe_layout():
     assert {
         "Machine", "OptionalHeaderMagic", "Subsystem", "SectionCharacteristics"
     } <= set(layout.type_dict.enum_dict)
+
+
+def test_load_elf_layout():
+    """The bundled ELF layout exposes 32/64-bit structures and enums."""
+    layout = load_elf_layout()
+
+    assert layout.struct_def_name == "elf_file"
+    assert {
+        "elf_program_header_32",
+        "elf_program_header_64",
+        "elf_section_header_32",
+        "elf_section_header_64",
+    } <= set(layout.type_dict.struct_dict)
+    assert {
+        "Class", "DataEncoding", "Machine", "ProgramType", "SectionType",
+        "SectionFlags"
+    } <= set(layout.type_dict.enum_dict)
+
+
+def test_decode_minimal_elf64_headers():
+    """The ELF layout follows ELF64 offsets and decodes dynamic tables."""
+    SAFE_FUNCS["InfoSize"] = InfoSize
+    data = bytearray(184)
+    data[0:4] = b"\x7fELF"
+    data[4] = 2
+    data[5] = 1
+    data[6] = 1
+    data[16:18] = (3).to_bytes(2, "little")
+    data[18:20] = (62).to_bytes(2, "little")
+    data[20:24] = (1).to_bytes(4, "little")
+    data[24:32] = (0x400000).to_bytes(8, "little")
+    data[32:40] = (64).to_bytes(8, "little")
+    data[40:48] = (120).to_bytes(8, "little")
+    data[52:54] = (64).to_bytes(2, "little")
+    data[54:56] = (56).to_bytes(2, "little")
+    data[56:58] = (1).to_bytes(2, "little")
+    data[58:60] = (64).to_bytes(2, "little")
+    data[60:62] = (1).to_bytes(2, "little")
+    data[64:68] = (1).to_bytes(4, "little")
+    data[68:72] = (5).to_bytes(4, "little")
+    data[72:80] = (0x1000).to_bytes(8, "little")
+    data[120 + 4:120 + 8] = (1).to_bytes(4, "little")
+    data[120 + 8:120 + 16] = (6).to_bytes(8, "little")
+
+    instance = decode(load_elf_layout(), data)
+    program_header = next(field.value for field in instance.field_instances
+                          if field.field_def.name.startswith("program_headers"))
+
+    assert _field_value(instance, "elf_class") == 2
+    assert _field_value(instance, "e_machine") == 62
+    assert _field_value(program_header, "p_type") == 1
+    assert not any(field.field_def.name == "section_headers"
+                   for field in instance.field_instances)
 
 
 def test_decode_minimal_pe32_headers():

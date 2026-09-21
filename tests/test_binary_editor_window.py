@@ -949,6 +949,7 @@ def test_binary_editor_file_menu_uses_binary_file_commands(monkeypatch):
         "PCAP",
         "PCAPNG",
         "PE",
+        "ELF",
     ]
 
 
