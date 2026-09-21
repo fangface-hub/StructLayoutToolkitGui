@@ -3,7 +3,7 @@ from importlib.resources import as_file, files
 
 from sltcodec import StructLayout, load_struct_layout
 
-__all__ = ["load_pcap_layout", "load_pcapng_layout"]
+__all__ = ["load_pcap_layout", "load_pcapng_layout", "load_pe_layout"]
 
 
 def _load_layout(filename: str) -> StructLayout:
@@ -20,3 +20,8 @@ def load_pcap_layout() -> StructLayout:
 def load_pcapng_layout() -> StructLayout:
     """Load the bundled PCAPNG StructLayout."""
     return _load_layout("pcapng.json")
+
+
+def load_pe_layout() -> StructLayout:
+    """Load the bundled PE StructLayout."""
+    return _load_layout("pe.json")

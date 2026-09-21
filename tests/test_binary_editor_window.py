@@ -948,6 +948,7 @@ def test_binary_editor_file_menu_uses_binary_file_commands(monkeypatch):
     assert [command["label"] for command in resource_menu.commands] == [
         "PCAP",
         "PCAPNG",
+        "PE",
     ]
 
 

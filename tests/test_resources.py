@@ -1,9 +1,12 @@
 """Tests for bundled StructLayout resources."""
 from importlib.resources import as_file, files
 
+from sltcalc import SAFE_FUNCS
 from sltcodec import decode, load_struct_layout
+from sltcore import InfoSize
 
-from sltgui.resources import load_pcap_layout, load_pcapng_layout
+from sltgui.resources import (load_pcap_layout, load_pcapng_layout,
+                              load_pe_layout)
 
 
 def _field_value(instance, name):
@@ -91,6 +94,49 @@ def test_load_pcapng_layout():
     assert next(field
                 for field in layout.type_dict.struct_dict["ipv6_packet"].fields
                 if field.name == "next_header").enum_def_name == "IpProtocol"
+
+
+def test_load_pe_layout():
+    """The bundled PE layout exposes executable header structures and enums."""
+    layout = load_pe_layout()
+
+    assert layout.struct_def_name == "pe_file"
+    assert {
+        "pe_dos_header", "pe_coff_header", "pe_section_header",
+        "pe_optional_header_32", "pe_optional_header_64"
+    } <= set(layout.type_dict.struct_dict)
+    assert {
+        "Machine", "OptionalHeaderMagic", "Subsystem", "SectionCharacteristics"
+    } <= set(layout.type_dict.enum_dict)
+
+
+def test_decode_minimal_pe32_headers():
+    """The PE layout follows e_lfanew and decodes a PE32 section header."""
+    SAFE_FUNCS["InfoSize"] = InfoSize
+    data = bytearray(0x178 + 40)
+    data[0:2] = b"MZ"
+    data[0x3C:0x40] = (0x80).to_bytes(4, "little")
+    data[0x80:0x84] = b"PE\0\0"
+    data[0x84:0x86] = (0x14C).to_bytes(2, "little")
+    data[0x86:0x88] = (1).to_bytes(2, "little")
+    data[0x94:0x96] = (0xE0).to_bytes(2, "little")
+    data[0x96:0x98] = (2).to_bytes(2, "little")
+    data[0x98:0x9A] = (0x10B).to_bytes(2, "little")
+    data[0xD4:0xD8] = (0).to_bytes(4, "little")
+    data[0x178:0x180] = b".text\0\0\0"
+    data[0x180:0x184] = (0x1000).to_bytes(4, "little")
+    data[0x184:0x188] = (0x1000).to_bytes(4, "little")
+    data[0x188:0x18C] = (0x200).to_bytes(4, "little")
+    data[0x18C:0x190] = (0x400).to_bytes(4, "little")
+
+    instance = decode(load_pe_layout(), data)
+    dos_header = _field_value(instance, "dos_header")
+    coff_header = _field_value(instance, "coff_header")
+    section = _field_value(instance, "section_headers")
+
+    assert _field_value(dos_header, "e_magic") == 0x5A4D
+    assert _field_value(coff_header, "Machine") == 0x14C
+    assert _field_value(section, "Name") == bytearray(b".text\0\0\0")
 
 
 def test_decode_little_endian_pcapng_blocks():

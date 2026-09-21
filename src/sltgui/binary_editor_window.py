@@ -24,7 +24,7 @@ if __package__:
                                          replace_instance_field_value,
                                          replace_instance_value)
     from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
-    from .resources import load_pcap_layout, load_pcapng_layout
+    from .resources import load_pcap_layout, load_pcapng_layout, load_pe_layout
 else:
     lua_plugins_module = import_module("lua_plugins")
     LuaPluginManager = lua_plugins_module.LuaPluginManager
@@ -43,6 +43,7 @@ else:
     resources_module = import_module("resources")
     load_pcap_layout = resources_module.load_pcap_layout
     load_pcapng_layout = resources_module.load_pcapng_layout
+    load_pe_layout = resources_module.load_pe_layout
 
 SAFE_FUNCS.setdefault("InfoSize", InfoSize)
 
@@ -252,6 +253,10 @@ class BinaryEditorWindow(tk.Toplevel):
             label="PCAPNG",
             command=lambda: self._load_struct_layout_resource(load_pcapng_layout
                                                               ),
+        )
+        resource_menu.add_command(
+            label="PE",
+            command=lambda: self._load_struct_layout_resource(load_pe_layout),
         )
         type_definition_menu.add_cascade(
             label="Load Resource",

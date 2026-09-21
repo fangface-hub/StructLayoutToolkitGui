@@ -92,10 +92,11 @@ The bundled PCAP and PCAPNG StructLayouts can be loaded without external JSON
 files:
 
 ```python
-from sltgui.resources import load_pcap_layout, load_pcapng_layout
+from sltgui.resources import load_pcap_layout, load_pcapng_layout, load_pe_layout
 
 pcap_layout = load_pcap_layout()
 pcapng_layout = load_pcapng_layout()
+pe_layout = load_pe_layout()
 ```
 
 The PCAPNG layout follows each block's total length, supports byte-order changes
@@ -114,6 +115,13 @@ The bundled layouts define enums for link types, EtherTypes, IP protocol/next
 header numbers, and ARP operations. Enum fields are displayed as `UDP (17)`.
 Their Value cells accept either the enum name, such as `TCP`, or the combined
 display form, such as `TCP (6)`. Unknown values remain numeric.
+
+The Binary Editor also includes a bundled Portable Executable (PE) layout.
+Choose **Type Definition > Load Resource > PE** to inspect Windows executable
+files. It supports the DOS header, PE signature, COFF header, PE32 and PE32+
+optional headers, data directories, and section headers. The layout defines
+enums for machine types, optional-header formats, subsystems, COFF flags, DLL
+characteristics, and section characteristics.
 
 ## Reassembled Packet Data Editor
 
