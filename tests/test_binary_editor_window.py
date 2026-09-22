@@ -101,6 +101,15 @@ def _load_binary_editor_module(monkeypatch):
     tkinterex_module.ConfirmDialog = object
     tkinterex_module.SelectDialog = object
     tkinterex_module.show_modal_window = lambda parent, modal_window: None
+
+    class DummyOperationCanceledError(Exception):
+        """Stub matching tkinterex.OperationCanceledError."""
+
+    def dummy_run_with_progress(_parent, _title, worker_fn):
+        return worker_fn(lambda _progress: None)
+
+    tkinterex_module.OperationCanceledError = DummyOperationCanceledError
+    tkinterex_module.run_with_progress = dummy_run_with_progress
     sys.modules["tkinterex"] = tkinterex_module
 
     treeviewex_module = types.ModuleType("treeviewex")
@@ -542,8 +551,11 @@ def test_binary_editor_passes_loaded_type_definitions_to_codec(
     editor.struct_label = DummyLabel()
     editor._select_struct = lambda: "Packet"
     editor._refresh_tree = lambda: None
-    editor._run_with_progress = lambda _title, worker_fn: worker_fn(
-        lambda _progress: None)
+    monkeypatch.setattr(
+        module,
+        "run_with_progress",
+        lambda _parent, _title, worker_fn: worker_fn(lambda _progress: None),
+    )
     editor._open_struct_layout()
     editor._new_binary()
 
@@ -588,8 +600,11 @@ def test_opening_struct_layout_decodes_loaded_binary(monkeypatch, tmp_path):
     editor.struct_label = types.SimpleNamespace(
         configure=lambda **_kwargs: None, )
     editor._refresh_tree = lambda: None
-    editor._run_with_progress = lambda _title, worker_fn: worker_fn(
-        lambda _progress: None)
+    monkeypatch.setattr(
+        module,
+        "run_with_progress",
+        lambda _parent, _title, worker_fn: worker_fn(lambda _progress: None),
+    )
 
     editor._open_struct_layout()
 
@@ -653,8 +668,11 @@ def test_binary_editor_tracks_current_struct_layout(monkeypatch):
     editor._refresh_tree = lambda: None
     editor._select_struct = lambda: "Packet"
     editor.struct_instance = None
-    editor._run_with_progress = lambda _title, worker_fn: worker_fn(
-        lambda _progress: None)
+    monkeypatch.setattr(
+        module,
+        "run_with_progress",
+        lambda _parent, _title, worker_fn: worker_fn(lambda _progress: None),
+    )
 
     monkeypatch.setattr(
         module,
@@ -1135,8 +1153,11 @@ def test_selecting_struct_redecodes_loaded_binary(monkeypatch):
     editor.struct_label = DummyLabel()
     editor._select_struct = lambda: "Packet"
     editor._refresh_tree = lambda: None
-    editor._run_with_progress = lambda _title, worker_fn: worker_fn(
-        lambda _progress: None)
+    monkeypatch.setattr(
+        module,
+        "run_with_progress",
+        lambda _parent, _title, worker_fn: worker_fn(lambda _progress: None),
+    )
     monkeypatch.setattr(
         module,
         "decode",
@@ -1168,8 +1189,11 @@ def test_redecode_binary_refreshes_current_instance(monkeypatch):
     editor.binary_data = bytearray(b"\x01")
     editor.struct_instance = object()
     editor._refresh_tree = lambda: refresh_calls.append(True)
-    editor._run_with_progress = lambda _title, worker_fn: worker_fn(
-        lambda _progress: None)
+    monkeypatch.setattr(
+        module,
+        "run_with_progress",
+        lambda _parent, _title, worker_fn: worker_fn(lambda _progress: None),
+    )
     monkeypatch.setattr(
         module,
         "decode",
@@ -1677,8 +1701,8 @@ def test_nested_treeview_validates_nested_cells(monkeypatch):
     assert tree.is_valid_cell(("child", "invalid")) is False
 
 
-def test_progress_wrapper_and_default_plugin_manager(monkeypatch):
-    """Progress work is delegated and an unset plugin manager is harmless."""
+def test_progress_helper_and_default_plugin_manager(monkeypatch):
+    """Progress uses the helper and an unset plugin manager is harmless."""
     module = _load_binary_editor_module(monkeypatch)
     calls = []
 
@@ -1693,8 +1717,8 @@ def test_progress_wrapper_and_default_plugin_manager(monkeypatch):
     )
     editor = object.__new__(module.BinaryEditorWindow)
 
-    result = editor._run_with_progress(
-        "Working", lambda progress: (progress(0.5), "done")[1])
+    result = module.run_with_progress(
+        editor, "Working", lambda progress: (progress(0.5), "done")[1])
 
     assert result == "done"
     assert calls == [(editor, "Working"), 0.5]

@@ -131,8 +131,12 @@ def test_open_capture_applies_decode_plugin(monkeypatch, tmp_path):
         apply_decode=lambda instance: f"plugin:{instance}")
     editor._refresh_packets = lambda *_args: None
     progress_titles = []
-    editor._run_with_progress = lambda title, worker: (progress_titles.append(
-        title) or worker(lambda _progress: None))
+    monkeypatch.setattr(
+        packet_editor_module,
+        "run_with_progress",
+        lambda _parent, title, worker:
+        (progress_titles.append(title) or worker(lambda _progress: None)),
+    )
     opened = []
     document = types.SimpleNamespace()
 
@@ -314,8 +318,11 @@ def test_struct_value_edit_encodes_and_writes_back_in_this_window(monkeypatch):
         apply_encode=lambda instance: f"plugin:{instance}",
         apply_decode=lambda instance: f"plugin:{instance}",
     )
-    editor._run_with_progress = lambda _title, worker: worker(lambda _progress:
-                                                              None)
+    monkeypatch.setattr(
+        packet_editor_module,
+        "run_with_progress",
+        lambda _parent, _title, worker: worker(lambda _progress: None),
+    )
     editor._detail_path_by_row_id = {"field": (0, )}
     editor._selected_packet = lambda: packet
     editor._refresh_packets = lambda _sequence: None
@@ -349,8 +356,12 @@ def test_selected_packet_uses_matching_payload_layout(monkeypatch):
     editor._lua_plugin_manager = types.SimpleNamespace(
         apply_decode=lambda instance: f"plugin:{instance}")
     progress_titles = []
-    editor._run_with_progress = lambda title, worker: (progress_titles.append(
-        title) or worker(lambda _progress: None))
+    monkeypatch.setattr(
+        packet_editor_module,
+        "run_with_progress",
+        lambda _parent, title, worker:
+        (progress_titles.append(title) or worker(lambda _progress: None)),
+    )
     editor._selected_packet = lambda: packet
     labels = []
     editor.definition_label = types.SimpleNamespace(
@@ -484,8 +495,8 @@ def test_bytes_per_row_change_refreshes_only_raw_detail():
     assert refreshes == [True]
 
 
-def test_run_with_progress_delegates_to_shared_dialog(monkeypatch):
-    """Progress work is delegated with the editor as the dialog parent."""
+def test_run_with_progress_is_called_directly(monkeypatch):
+    """Progress work uses the editor as the shared dialog parent."""
     editor = object.__new__(PacketDataEditorWindow)
     worker = object()
     calls = []
@@ -496,7 +507,7 @@ def test_run_with_progress_delegates_to_shared_dialog(monkeypatch):
             (parent, title, callback)) or "result",
     )
 
-    result = editor._run_with_progress("Working", worker)
+    result = packet_editor_module.run_with_progress(editor, "Working", worker)
 
     assert result == "result"
     assert calls == [(editor, "Working", worker)]
@@ -526,14 +537,21 @@ def test_open_capture_handles_cancel_and_decode_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(packet_editor_module.messagebox, "showerror",
                         lambda *args, **kwargs: errors.append((args, kwargs)))
 
-    editor._run_with_progress = lambda *_args: (_ for _ in ()).throw(
-        packet_editor_module.OperationCanceledError())
+    monkeypatch.setattr(
+        packet_editor_module,
+        "run_with_progress",
+        lambda *_args:
+        (_ for _ in ()).throw(packet_editor_module.OperationCanceledError()),
+    )
     editor._open_capture()
     assert editor.document == "current"
     assert errors == []
 
-    editor._run_with_progress = lambda *_args: (_ for _ in ()).throw(
-        ValueError("bad capture"))
+    monkeypatch.setattr(
+        packet_editor_module,
+        "run_with_progress",
+        lambda *_args: (_ for _ in ()).throw(ValueError("bad capture")),
+    )
     editor._open_capture()
     assert editor.document == "current"
     assert errors[0][0] == ("Open Error", "bad capture")
@@ -744,6 +762,30 @@ def test_decode_selected_packet_handles_cancel_and_error(monkeypatch):
         ValueError("bad layout"))
     editor._decode_selected_packet()
     assert errors[0][0] == ("Decode Error", "bad layout")
+    assert errors[0][1]["parent"] is editor
+
+
+def test_decode_selected_packet_reports_condition_attribute_error(monkeypatch):
+    """A malformed condition (e.g. `protocol.UDP`) is reported, not silent."""
+    editor = object.__new__(PacketDataEditorWindow)
+    packet = types.SimpleNamespace(complete=True, data=b"payload")
+    editor._selected_packet = lambda: packet
+    editor.payload_struct_defs = []
+    editor.definition_label = types.SimpleNamespace(
+        configure=lambda **_kwargs: None)
+    editor._refresh_detail_tree = lambda: None
+    monkeypatch.setattr(
+        packet_editor_module, "matching_struct_layout", lambda *_args:
+        (_ for _ in
+         ()).throw(AttributeError("'int' object has no attribute 'UDP'")))
+    errors = []
+    monkeypatch.setattr(packet_editor_module.messagebox, "showerror",
+                        lambda *args, **kwargs: errors.append((args, kwargs)))
+
+    editor._decode_selected_packet()
+
+    assert errors[0][0] == ("Decode Error",
+                            "'int' object has no attribute 'UDP'")
     assert errors[0][1]["parent"] is editor
 
 

@@ -49,10 +49,12 @@ class ReassembledPacket:
 
     @property
     def source(self) -> str:
+        """Return the source IP address as a string."""
         return str(ipaddress.ip_address(self.source_bytes))
 
     @property
     def destination(self) -> str:
+        """Return the destination IP address as a string."""
         return str(ipaddress.ip_address(self.destination_bytes))
 
     def replace_data(
@@ -72,6 +74,7 @@ class ReassembledPacket:
         self._update_transport_checksum(self.data)
 
     def _update_transport_checksum(self, data: virtual_bytearray) -> None:
+        """Update the transport layer checksum for the given data."""
         checksum_offset = {6: 16, 17: 6, 1: 2, 58: 2}.get(self.protocol)
         if checksum_offset is None or len(data) < checksum_offset + 2:
             return
@@ -101,6 +104,7 @@ class ReassembledPacket:
 
 @dataclass(frozen=True)
 class _RawFragment:
+    """Representation of a raw IP fragment."""
     sequence: int
     timestamps: dict[str, object]
     key: tuple
@@ -205,13 +209,16 @@ class CaptureDocument:
         )
 
     def save(self, path: str | Path) -> None:
+        """Save the capture document to the specified file path."""
         Path(path).write_bytes(self.data)
 
 
 def _frame_timestamps(instance: object) -> list[dict[str, object]]:
+    """Extract timestamps from each frame in the capture instance."""
     timestamps = []
 
     def timestamp_values(field: object) -> dict[str, object]:
+        """Extract timestamp values from a field instance."""
         name = field.field_def.name
         value = field.value
         child_values = {
@@ -237,6 +244,7 @@ def _frame_timestamps(instance: object) -> list[dict[str, object]]:
         return {name: high if isinstance(high, str) else high << 32 | low}
 
     def visit(current: object) -> None:
+        """Recursively visit each field instance to extract timestamps."""
         fields = getattr(current, "field_instances", ())
         names = {field.field_def.name for field in fields}
         if "packet_data" in names:
@@ -254,7 +262,7 @@ def _frame_timestamps(instance: object) -> list[dict[str, object]]:
 
 
 def internet_checksum(data: bytes | bytearray | virtual_bytearray, ) -> int:
-    """Return the RFC 1071 one's-complement checksum."""
+    """Compute the RFC 1071 one's-complement checksum for the given data."""
     total = 0
     high_byte = None
     for value in data:
@@ -271,6 +279,7 @@ def internet_checksum(data: bytes | bytearray | virtual_bytearray, ) -> int:
 
 
 def _pcap_frames(data: bytearray) -> list[tuple[int, int, int]]:
+    """Extract frames from a PCAP file represented as a bytearray."""
     magic = bytes(data[:4])
     endian = "<" if magic in {b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"} else ">"
     if len(data) < 24:
@@ -291,6 +300,7 @@ def _pcap_frames(data: bytearray) -> list[tuple[int, int, int]]:
 
 
 def _pcapng_frames(data: bytearray) -> list[tuple[int, int, int]]:
+    """Extract frames from a PCAPNG file represented as a bytearray."""
     frames = []
     interfaces: list[tuple[int, int]] = []
     endian = "<"
@@ -343,6 +353,7 @@ def _extract_ip_fragment(
     sequence: int,
     timestamps: dict[str, object],
 ) -> _RawFragment | None:
+    """Extract an IP fragment from a captured frame based on the link type."""
     if link_type != 1 or frame_length < 14:
         return None
     frame_end = frame_offset + frame_length
@@ -363,6 +374,7 @@ def _extract_ip_fragment(
 
 def _extract_ipv4(capture: bytearray, offset: int, end: int, sequence: int,
                   timestamps: dict[str, object]) -> _RawFragment | None:
+    """Extract an IPv4 fragment from a captured frame."""
     if offset + 20 > end or capture[offset] >> 4 != 4:
         return None
     header_length = (capture[offset] & 0x0F) * 4
@@ -389,6 +401,7 @@ def _extract_ipv4(capture: bytearray, offset: int, end: int, sequence: int,
 
 def _extract_ipv6(capture: bytearray, offset: int, end: int, sequence: int,
                   timestamps: dict[str, object]) -> _RawFragment | None:
+    """Extract an IPv6 fragment from a captured frame."""
     if offset + 40 > end or capture[offset] >> 4 != 6:
         return None
     payload_length = int.from_bytes(capture[offset + 4:offset + 6], "big")
@@ -432,6 +445,7 @@ def _reassemble(
     fragments: list[_RawFragment],
     progress_callback: Callable[[float], None] | None = None,
 ) -> list[ReassembledPacket]:
+    """Reassemble raw IP fragments into complete packets."""
     groups: dict[tuple, list[_RawFragment]] = {}
     for fragment in fragments:
         groups.setdefault(fragment.key, []).append(fragment)

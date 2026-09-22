@@ -12,12 +12,12 @@ from sltcalc import SAFE_FUNCS
 from sltcodec import (StructLayout, TypeDict, decode, encode,
                       load_struct_layout, save_struct_layout)
 from sltcore import InfoSize, bits_get, virtual_bytearray
-from tkinterex import ConfirmDialog, SelectDialog, show_modal_window
+from tkinterex import (ConfirmDialog, OperationCanceledError, SelectDialog,
+                       run_with_progress, show_modal_window)
 from treeviewex import TreeviewEx
 
 if __package__:
     from ._infosize_utils import format_infosize
-    from ._progress_dialog import OperationCanceledError, run_with_progress
     from ._struct_instance_model import (field_instance_at_path,
                                          format_field_value, format_type,
                                          minimum_struct_size,
@@ -31,9 +31,6 @@ else:
     LuaPluginManager = lua_plugins_module.LuaPluginManager
     NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
     format_infosize = import_module("_infosize_utils").format_infosize
-    progress_module = import_module("_progress_dialog")
-    OperationCanceledError = progress_module.OperationCanceledError
-    run_with_progress = progress_module.run_with_progress
     _model = import_module("_struct_instance_model")
     field_instance_at_path = _model.field_instance_at_path
     format_field_value = _model.format_field_value
@@ -91,10 +88,6 @@ class BinaryEditorWindow(tk.Toplevel):
     BIN_DIR_KEY = "last_bin_dir"
     STRUCT_LAYOUT_DIR_KEY = "last_struct_layout_dir"
 
-    def _run_with_progress(self, title: str, worker_fn):
-        """Run codec work in a thread while keeping progress UI responsive."""
-        return run_with_progress(self, title, worker_fn)
-
     def _decode_with_progress(
         self,
         struct_layout: StructLayout,
@@ -102,7 +95,8 @@ class BinaryEditorWindow(tk.Toplevel):
         title: str = "Decoding...",
     ) -> object:
         """Decode with a visible progress bar when supported by sltcodec."""
-        instance = self._run_with_progress(
+        instance = run_with_progress(
+            self,
             title,
             lambda progress_callback: decode(
                 struct_layout,
@@ -135,7 +129,8 @@ class BinaryEditorWindow(tk.Toplevel):
     ) -> bytearray:
         """Encode with a visible progress bar when supported by sltcodec."""
         encoded_instance = self._plugin_manager().apply_encode(struct_instance)
-        return self._run_with_progress(
+        return run_with_progress(
+            self,
             title,
             lambda progress_callback: encode(
                 struct_layout,

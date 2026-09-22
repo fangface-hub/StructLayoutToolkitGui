@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING
 
 from sltcodec import StructLayout, decode, encode
 from sltcore import InfoSize, bits_get
-from tkinterex import show_modal_window
+from tkinterex import (OperationCanceledError, run_with_progress,
+                       show_modal_window)
 from treeviewex import TreeviewEx
-
-from sltgui._progress_dialog import OperationCanceledError, run_with_progress
 
 if TYPE_CHECKING:
     from ._infosize_utils import format_infosize
@@ -105,10 +104,6 @@ class PacketDataEditorWindow(tk.Toplevel):
     DETAIL_HEX_COLUMN_ID = "#6"
     PROTOCOL_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP", 58: "ICMPv6"}
 
-    def _run_with_progress(self, title: str, worker_fn):
-        """Run background work using the shared progress dialog."""
-        return run_with_progress(self, title, worker_fn)
-
     def _decode_with_progress(
         self,
         struct_layout: StructLayout,
@@ -116,7 +111,8 @@ class PacketDataEditorWindow(tk.Toplevel):
         title: str = "Decoding packet...",
     ) -> object:
         """Decode packet data and apply the configured decode plugin."""
-        instance = self._run_with_progress(
+        instance = run_with_progress(
+            self,
             title,
             lambda progress_callback: decode(
                 struct_layout,
@@ -308,7 +304,8 @@ class PacketDataEditorWindow(tk.Toplevel):
         if not path:
             return
         try:
-            document = self._run_with_progress(
+            document = run_with_progress(
+                self,
                 "Decoding and reassembling capture...",
                 lambda progress_callback: CaptureDocument.open(
                     path,
@@ -430,7 +427,8 @@ class PacketDataEditorWindow(tk.Toplevel):
                     )
             except OperationCanceledError:
                 return
-            except (TypeError, ValueError, NameError, SyntaxError) as exc:
+            except (TypeError, ValueError, NameError, SyntaxError,
+                    AttributeError) as exc:
                 messagebox.showerror("Decode Error", str(exc), parent=self)
         label = (f"Payload: {self.struct_layout.struct_def_name}"
                  if self.struct_layout is not None else "Payload: Hex only")
