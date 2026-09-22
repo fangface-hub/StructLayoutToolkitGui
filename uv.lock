@@ -223,7 +223,7 @@ wheels = [
 
 [[package]]
 name = "sltgui"
-version = "1.0.0"
+version = "1.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "lupa" },
@@ -247,7 +247,7 @@ requires-dist = [
     { name = "sltcodec", specifier = ">=2.6.1" },
     { name = "sltcore", specifier = ">=1.7.0" },
     { name = "tkinterex", specifier = ">=1.1.3" },
-    { name = "treeviewex", specifier = ">=1.2.0" },
+    { name = "treeviewex", specifier = ">=1.2.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -267,9 +267,9 @@ wheels = [
 
 [[package]]
 name = "treeviewex"
-version = "1.2.0"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ba/3b/353a878dbc77c8677e967357a019705cbf0326d31633bbd378d29bd66bc8/treeviewex-1.2.0.tar.gz", hash = "sha256:7abb9d51e47ca82abd0235b311defec80210befe5f375405cfee419c084fcc28", size = 47806, upload-time = "2026-09-20T02:28:22.857Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/d7/5d804ecfecc4c0724240b0d98b767a56806000c4f87eb528dca158e0b27e/treeviewex-1.2.1.tar.gz", hash = "sha256:26eadb3b0a1a9c8b8b0998db34715cb384210c28f27182cf406b3826fe021f0f", size = 48070, upload-time = "2026-09-22T06:16:41.938Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/f4/91d693cfefea78b920af3519e182ddbd3c5086e40ba3b6a6b705017a71f4/treeviewex-1.2.0-py3-none-any.whl", hash = "sha256:f644fc7b89b72dbf0b562e060a704e87191dc5670f71f44ad1ba3dc5c9dc4dbf", size = 7154, upload-time = "2026-09-20T02:28:21.869Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/9b/fe9735612e40af1231da9683d79e8c6a75bb525e2b93e7df0f7559724626/treeviewex-1.2.1-py3-none-any.whl", hash = "sha256:52898fbdb14707f157fe10cc0f3168025d54e04109862e1c01a7c233ade03228", size = 7239, upload-time = "2026-09-22T06:16:41.174Z" },
 ]

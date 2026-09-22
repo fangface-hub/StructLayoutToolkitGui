@@ -75,6 +75,7 @@ class EnumDefDictEditor(tk.Toplevel):
             command=self._remove_enum,
         ).pack(side=tk.LEFT)
 
+        ttk.Style(self).configure("EnumDef.Treeview", font="TkFixedFont")
         self.enum_tree = TreeviewEx(
             left_frame,
             columns=("name", ),
@@ -83,7 +84,6 @@ class EnumDefDictEditor(tk.Toplevel):
             height=25,
             style="EnumDef.Treeview",
         )
-        ttk.Style(self).configure("EnumDef.Treeview", font="TkFixedFont")
         self.enum_tree.heading("name", text="Name")
         self.enum_tree.column("name", width=220, anchor=tk.W)
         self.enum_tree.set_readonly_column("#1")

@@ -358,6 +358,7 @@ class BinaryEditorWindow(tk.Toplevel):
             command=self._redecode_binary,
         ).pack(side=tk.LEFT, padx=(12, 0))
 
+        ttk.Style(self).configure("Binary.Treeview", font="TkFixedFont")
         self.tree = _NestedTreeviewEx(
             self,
             columns=self.BINARY_COLUMNS,
@@ -365,7 +366,6 @@ class BinaryEditorWindow(tk.Toplevel):
             selectmode="browse",
             style="Binary.Treeview",
         )
-        ttk.Style(self).configure("Binary.Treeview", font="TkFixedFont")
         self.tree.heading("#0", text="")
         for column in self.BINARY_COLUMNS:
             self.tree.heading(column, text=column)

@@ -167,6 +167,7 @@ class StructDefDictEditor(tk.Toplevel):
             command=self._remove_struct,
         ).pack(side=tk.LEFT)
 
+        ttk.Style(self).configure("StructDef.Treeview", font="TkFixedFont")
         self.struct_tree = TreeviewEx(
             left_frame,
             columns=("name", ),
@@ -175,7 +176,6 @@ class StructDefDictEditor(tk.Toplevel):
             height=25,
             style="StructDef.Treeview",
         )
-        ttk.Style(self).configure("StructDef.Treeview", font="TkFixedFont")
         self.struct_tree.heading("name", text="Name")
         self.struct_tree.column("name", width=220, anchor=tk.W)
         self.struct_tree.set_readonly_column("#1")
