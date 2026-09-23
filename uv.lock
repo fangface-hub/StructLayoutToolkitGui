@@ -223,7 +223,7 @@ wheels = [
 
 [[package]]
 name = "sltgui"
-version = "1.3.1"
+version = "1.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "lupa" },
@@ -246,7 +246,7 @@ requires-dist = [
     { name = "sltcalc", specifier = ">=1.1.0" },
     { name = "sltcodec", specifier = ">=2.6.1" },
     { name = "sltcore", specifier = ">=1.7.0" },
-    { name = "tkinterex", specifier = ">=1.2.0" },
+    { name = "tkinterex", specifier = ">=1.2.1" },
     { name = "treeviewex", specifier = ">=1.2.1" },
 ]
 
@@ -258,11 +258,11 @@ dev = [
 
 [[package]]
 name = "tkinterex"
-version = "1.2.0"
+version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/24/7a/176688f5e99957fea42c53439162aefc32888c8cd074ac8a37fd932ceec2/tkinterex-1.2.0.tar.gz", hash = "sha256:2a9bc5fa7748af8d9b8303306c3fcab834b355c65b5d917d6675d358e0c85696", size = 45804, upload-time = "2026-09-22T14:37:27.861Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/7e/20641544f286c573c37b76c4419d22d4eb9d12bae92df8121f9d7b10fd1a/tkinterex-1.2.1.tar.gz", hash = "sha256:dd4b0036c77e4bf7bf55ffd9369acf9cf0d65045ac9ebe7216bef6e55ea15311", size = 45811, upload-time = "2026-09-23T12:03:42.273Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/08/2a37981a6efef12a4cad5570d34a5360910d720420711ba29d65a8a4560d/tkinterex-1.2.0-py3-none-any.whl", hash = "sha256:592f5800ba3ab0eedf8c6b795fe3f7a0d76f610e2d92d1b36f684dab96ecc6ea", size = 7200, upload-time = "2026-09-22T14:37:27.095Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/c9/110b42554bfc772131c498e22fb8ad9e3cb78d6b40c552507e9026088844/tkinterex-1.2.1-py3-none-any.whl", hash = "sha256:b243e8ce818978f778a6f33a97ee6c74465a9cb3639ad9ef6fded3577c172764", size = 7199, upload-time = "2026-09-23T12:03:41.345Z" },
 ]
 
 [[package]]

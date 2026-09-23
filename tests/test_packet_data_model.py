@@ -4,8 +4,8 @@ import struct
 import pytest
 from sltcore import virtual_bytearray
 
-from sltgui._packet_data_model import (CaptureDocument, _pcap_frames,
-                                       _pcapng_frames, internet_checksum)
+from sltgui._packet_data_model import (CaptureDocument, _frames,
+                                       internet_checksum)
 
 
 def _ipv4_fragment(
@@ -287,40 +287,23 @@ def test_internet_checksum_pads_odd_length_data():
     assert internet_checksum(bytes.fromhex("010203")) == 0xFBFD
 
 
-@pytest.mark.parametrize(
-    ("data", "message"),
-    [
-        (bytearray(23), "Truncated PCAP global header"),
-        (bytearray(25), "Truncated PCAP packet header"),
-        (bytearray(40), "Truncated PCAP packet data"),
-    ],
-)
-def test_pcap_frames_rejects_truncated_data(data, message):
-    if len(data) >= 24:
-        data[:4] = b"\xd4\xc3\xb2\xa1"
-        data[20:24] = (1).to_bytes(4, "little")
-    if len(data) >= 40:
-        data[32:36] = (1).to_bytes(4, "little")
+@pytest.mark.parametrize("capture_format, factory, frame_offset", [
+    ("pcap", _pcap, 40),
+    ("pcapng", _pcapng, 76),
+])
+def test_frame_metadata_comes_from_decoded_fields(capture_format, factory,
+                                                  frame_offset):
+    frame = _ipv4_fragment(bytes.fromhex("3039003500080000"), 0, False)
+    document = CaptureDocument.from_bytes(factory([frame]))
 
-    with pytest.raises(ValueError, match=message):
-        _pcap_frames(data)
-
-
-@pytest.mark.parametrize(
-    ("data", "message"),
-    [
-        (bytearray(11), "Truncated PCAPNG block header"),
-        (bytearray.fromhex("0a0d0d0a 0c000000 00000000"),
-         "Invalid PCAPNG byte-order magic"),
-        (bytearray.fromhex("00000000 0a000000 00000000"),
-         "Invalid PCAPNG block length"),
-        (bytearray.fromhex("00000000 10000000 00000000"),
-         "Truncated PCAPNG block"),
-    ],
-)
-def test_pcapng_frames_rejects_invalid_blocks(data, message):
-    with pytest.raises(ValueError, match=message):
-        _pcapng_frames(data)
+    frames = _frames(document.struct_instance, capture_format)
+    assert [frame[:4] for frame in frames] == [
+        (frame_offset, len(frame), 1, {
+            "timestamp": "0.000000000"
+        } if capture_format == "pcap" else {
+            "timestamp": 1 << 32
+        }),
+    ]
 
 
 def test_capture_document_reports_decode_and_reassembly_progress():
