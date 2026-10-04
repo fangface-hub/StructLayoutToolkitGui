@@ -1,7 +1,9 @@
 """Editor for reassembled IP packet data in PCAP and PCAPNG files."""
 from __future__ import annotations
 
+import csv
 import json
+import re
 import tkinter as tk
 from importlib import import_module
 from pathlib import Path
@@ -145,6 +147,9 @@ class PacketDataEditorWindow(tk.Toplevel):
         file_menu.add_command(label="Save Capture As...",
                               command=self._save_capture_as)
         file_menu.add_separator()
+        file_menu.add_command(label="Export PayloadList",
+                              command=self._export_payload_list)
+        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=file_menu)
 
@@ -154,7 +159,61 @@ class PacketDataEditorWindow(tk.Toplevel):
             command=self._open_payload_struct_def_editor,
         )
         menubar.add_cascade(label="Packet Definition", menu=definition_menu)
+        view_menu = tk.Menu(menubar, tearoff=False)
+        view_menu.add_command(label="PayloadListView",
+                              command=self._open_payload_list_view)
+        menubar.add_cascade(label="View", menu=view_menu)
         self.config(menu=menubar)
+
+    def _export_payload_list(self) -> None:
+        """Export each payload condition's list as a separate CSV file."""
+        if self.document is None or not self.payload_struct_defs:
+            messagebox.showerror(
+                "Export Error",
+                "Open a capture and define payload conditions first.",
+                parent=self)
+            return
+        directory = filedialog.askdirectory(title="Export PayloadList",
+                                            initialdir=self.data_dir,
+                                            parent=self)
+        if not directory:
+            return
+        module_name = (f"{__package__}.payload_list_view_window"
+                       if __package__ else "payload_list_view_window")
+        view_module = import_module(module_name)
+        headings = [heading for _, heading, _ in
+                    view_module.PayloadListViewWindow.PACKET_COLUMNS]
+        written = []
+        try:
+            for index, definition in enumerate(self.payload_struct_defs, 1):
+                field_names, rows = view_module.collect_payload_rows(
+                    self, self, definition)
+                name = re.sub(r'[\\/:*?"<>|\s]+', "_",
+                              definition.struct_layout.struct_def_name
+                              ).strip("_") or "payload"
+                path = Path(directory) / f"{index:02d}_{name}.csv"
+                with path.open("w", newline="", encoding="utf-8") as file:
+                    writer = csv.writer(file)
+                    writer.writerow([*headings, *field_names])
+                    writer.writerows(rows)
+                written.append(path)
+        except OperationCanceledError:
+            return
+        except (OSError, TypeError, ValueError, NameError, SyntaxError,
+                AttributeError) as exc:
+            messagebox.showerror("Export Error", str(exc), parent=self)
+            return
+        messagebox.showinfo(
+            "Exported",
+            f"Exported {len(written)} file(s) to:\n{directory}",
+            parent=self)
+
+    def _open_payload_list_view(self) -> None:
+        """Open the read-only payload list view window."""
+        module_name = (f"{__package__}.payload_list_view_window"
+                       if __package__ else "payload_list_view_window")
+        window_class = import_module(module_name).PayloadListViewWindow
+        window_class(self, self)
 
     def _build_ui(self) -> None:
         """Build the main user interface for the packet data editor window."""

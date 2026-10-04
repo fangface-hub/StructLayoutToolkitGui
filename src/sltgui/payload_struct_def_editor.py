@@ -172,8 +172,9 @@ class PayloadStructDefEditor(tk.Toplevel):
     def _add(self) -> None:
         """Add a new payload struct definition to the list
            and refresh the tree view."""
+        condition = self.condition_entry.get().strip() or "True"
         self.definitions.append(
-            PayloadStructDef("True", StructLayout("", TypeDict())))
+            PayloadStructDef(condition, StructLayout("", TypeDict())))
         self.updated = True
         self._refresh_tree(len(self.definitions) - 1)
 

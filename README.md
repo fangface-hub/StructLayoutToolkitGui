@@ -64,6 +64,7 @@ Open `htmlcov/index.html` in a browser to inspect uncovered lines and branches.
 | `src/sltgui/binary_editor_window.py` | Main window for opening, decoding, editing, encoding, and saving binary data |
 | `src/sltgui/struct_def_dict_editor.py` | Modal editor for the `StructDef` dictionary |
 | `src/sltgui/enum_def_dict_editor.py` | Modal editor for the `EnumDef` dictionary |
+| `src/sltgui/payload_list_view_window.py` | Read-only per-condition payload field list and CSV row collection |
 | `src/sltgui/payload_struct_def_editor.py` | Editor for ordered payload condition and StructLayout pairs |
 | `src/sltgui/resources/` | PE and ELF StructLayout definitions bundled with the GUI |
 | `src/sltgui/__init__.py` | Public API with lazy imports for the GUI classes |
@@ -148,6 +149,21 @@ place. If no StructLayout matches, the lower pane displays editable raw Hex
 rows. Use **Bytes/row** to group each row into 1, 2, 4, 8, or 16 bytes. Each
 edited row must retain its displayed byte count. Incomplete fragment groups
 remain read-only.
+
+### Payload List View and Export
+
+**View > PayloadListView** opens a read-only window. Choose one condition from
+the Payload Struct Definitions list to show every complete packet that matches
+it. Each packet is one row: the packet columns of the upper pane are followed
+by one column per decoded field (nested fields appear as `parent.child`), so
+it is the lower pane transposed. Decoding reads the reassembled
+`virtual_bytearray` directly without copying it, and a progress dialog shows
+overall packet progress.
+
+**File > Export PayloadList** asks for an output folder and writes one CSV
+file per condition (`01_<struct name>.csv`, `02_...`) with the same columns as
+the list view. Files are UTF-8 without a BOM and existing files of the same
+name are overwritten.
 
 ### Payload Condition Environment
 

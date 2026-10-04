@@ -1134,22 +1134,26 @@ def test_build_menu_wires_commands(monkeypatch):
 
     editor._build_menu()
 
-    assert len(MenuRecorder.instances) == 3
+    assert len(MenuRecorder.instances) == 4
     menubar = MenuRecorder.instances[0]
     file_menu = MenuRecorder.instances[1]
     definition_menu = MenuRecorder.instances[2]
+    view_menu = MenuRecorder.instances[3]
+    assert view_menu.commands[0]["label"] == "PayloadListView"
     assert [item.get("label") for item in file_menu.commands] == [
         "Open Capture...",
         None,
         "Save Capture",
         "Save Capture As...",
         None,
+        "Export PayloadList",
+        None,
         "Exit",
     ]
     assert definition_menu.commands[0]["label"] == (
         "Payload Struct Definitions...")
     assert [item["label"]
-            for item in menubar.cascades] == ["File", "Packet Definition"]
+            for item in menubar.cascades] == ["File", "Packet Definition", "View"]
     assert configured == [{"menu": menubar}]
 
 
