@@ -4,23 +4,15 @@ from __future__ import annotations
 import json
 import tkinter as tk
 from dataclasses import dataclass
-from importlib import import_module
 from tkinter import messagebox, ttk
 
 from sltcodec import PRIMITIVE_TYPES, FieldDef, StructDef, TypeDict
 from sltcore import InfoSize
+from sltmodel.infosize import (infosize_to_json_data,
+                               infosize_value_to_string,
+                               parse_infosize_input)
 from tkinterex import ComboboxEx, EntryEx, TextEx, show_modal_window
 from treeviewex import TreeviewEx
-
-if __package__:
-    from ._infosize_utils import (infosize_to_json_data,
-                                  infosize_value_to_string,
-                                  parse_infosize_input)
-else:
-    _infosize_utils_module = import_module("_infosize_utils")
-    infosize_to_json_data = _infosize_utils_module.infosize_to_json_data
-    infosize_value_to_string = _infosize_utils_module.infosize_value_to_string
-    parse_infosize_input = _infosize_utils_module.parse_infosize_input
 
 FIELD_COLUMNS = (
     "name",

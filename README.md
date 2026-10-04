@@ -10,8 +10,9 @@ GUI editors for structure and enumeration definitions.
 - [uv](https://docs.astral.sh/uv/)
 - A Python environment with Tkinter support
 
-The project depends on SltCore for structure definitions, SltCodec for encoding
-and decoding, and SltCalc for expression evaluation. See `pyproject.toml` for
+The GUI depends on SltModel for GUI-independent capture, packet, and structure
+operations. SltModel in turn uses SltCore, SltCodec, and SltCalc. Both
+distributions are developed in this repository; see their project files for
 the exact version requirements.
 
 ### Setup
@@ -64,9 +65,9 @@ Open `htmlcov/index.html` in a browser to inspect uncovered lines and branches.
 | `src/sltgui/struct_def_dict_editor.py` | Modal editor for the `StructDef` dictionary |
 | `src/sltgui/enum_def_dict_editor.py` | Modal editor for the `EnumDef` dictionary |
 | `src/sltgui/payload_struct_def_editor.py` | Editor for ordered payload condition and StructLayout pairs |
-| `src/sltgui/resources/` | StructLayout definitions bundled with the package |
+| `src/sltgui/resources/` | PE and ELF StructLayout definitions bundled with the GUI |
 | `src/sltgui/__init__.py` | Public API with lazy imports for the GUI classes |
-| `tests/` | Unit tests with GUI dependencies replaced by stubs |
+| `tests/` | GUI integration tests |
 
 The package exposes five public classes:
 
@@ -75,6 +76,8 @@ from sltgui import (BinaryEditorWindow, EnumDefDictEditor,
                     PacketDataEditorWindow, PayloadStructDefEditor,
                     StructDefDictEditor)
 ```
+
+SltModel is a separate PyPI distribution maintained in the\n[StructLayoutToolkitModel](https://github.com/fangface-hub/StructLayoutToolkitModel)\nrepository. Publish it before releasing a GUI version that requires it.
 
 ## Built-in PCAP and PCAPNG Layouts
 

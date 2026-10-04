@@ -10,43 +10,22 @@ from typing import TYPE_CHECKING
 
 from sltcodec import StructLayout, decode, encode
 from sltcore import InfoSize, bits_get
+from sltmodel.infosize import format_infosize
+from sltmodel.packet_data import CaptureDocument, ReassembledPacket
+from sltmodel.payload_struct_defs import matching_struct_layout
+from sltmodel.struct_instance import (format_field_value, format_type,
+                                      replace_instance_value)
 from tkinterex import (OperationCanceledError, run_with_progress,
                        show_modal_window)
 from treeviewex import TreeviewEx
 
 if TYPE_CHECKING:
-    from ._infosize_utils import format_infosize
-    from ._packet_data_model import CaptureDocument, ReassembledPacket
-    from ._payload_struct_defs import matching_struct_layout
-    from ._struct_instance_model import (format_field_value, format_type,
-                                         replace_instance_value)
     from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
 elif __package__:
-    packet_model = import_module("._packet_data_model", __package__)
-    CaptureDocument = packet_model.CaptureDocument
-    ReassembledPacket = packet_model.ReassembledPacket
-    payload_defs_module = import_module("._payload_struct_defs", __package__)
-    matching_struct_layout = payload_defs_module.matching_struct_layout
-    format_infosize = import_module("._infosize_utils",
-                                    __package__).format_infosize
-    instance_model = import_module("._struct_instance_model", __package__)
-    format_field_value = instance_model.format_field_value
-    format_type = instance_model.format_type
-    replace_instance_value = instance_model.replace_instance_value
     lua_plugins_module = import_module(".lua_plugins", __package__)
     LuaPluginManager = lua_plugins_module.LuaPluginManager
     NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
 else:
-    packet_model = import_module("_packet_data_model")
-    CaptureDocument = packet_model.CaptureDocument
-    ReassembledPacket = packet_model.ReassembledPacket
-    payload_defs_module = import_module("_payload_struct_defs")
-    matching_struct_layout = payload_defs_module.matching_struct_layout
-    format_infosize = import_module("_infosize_utils").format_infosize
-    instance_model = import_module("_struct_instance_model")
-    format_field_value = instance_model.format_field_value
-    format_type = instance_model.format_type
-    replace_instance_value = instance_model.replace_instance_value
     lua_plugins_module = import_module("lua_plugins")
     LuaPluginManager = lua_plugins_module.LuaPluginManager
     NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS

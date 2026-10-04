@@ -230,6 +230,7 @@ dependencies = [
     { name = "sltcalc" },
     { name = "sltcodec" },
     { name = "sltcore" },
+    { name = "sltmodel" },
     { name = "tkinterex" },
     { name = "treeviewex" },
 ]
@@ -246,6 +247,7 @@ requires-dist = [
     { name = "sltcalc", specifier = ">=1.1.0" },
     { name = "sltcodec", specifier = ">=2.6.1" },
     { name = "sltcore", specifier = ">=1.7.0" },
+    { name = "sltmodel", specifier = ">=0.1.0" },
     { name = "tkinterex", specifier = ">=1.2.1" },
     { name = "treeviewex", specifier = ">=1.2.1" },
 ]
@@ -254,6 +256,20 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+]
+
+[[package]]
+name = "sltmodel"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sltcalc" },
+    { name = "sltcodec" },
+    { name = "sltcore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/08/c2/c693e813ba3029b66d37f8d1d26162064309c4cc4150742532a644850738/sltmodel-0.1.0.tar.gz", hash = "sha256:e81167bde6bb4027fe81eac7fab65b540a43664f9210397a32d0e74ee72cd87f", size = 22578, upload-time = "2026-10-04T13:43:34.125Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/23/d0c5f4858f9e10937df7919d3f85e695404f399b55bb8af56b8db0a18765/sltmodel-0.1.0-py3-none-any.whl", hash = "sha256:2e553b0a6a5cd3acb01dd254d09b2a3e4696b9eff8195f81d6a14c639b8705b9", size = 18411, upload-time = "2026-10-04T13:43:33.123Z" },
 ]
 
 [[package]]

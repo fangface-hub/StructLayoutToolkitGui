@@ -121,7 +121,7 @@ def _load_binary_editor_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "treeviewex", treeviewex_module)
     # The model module binds InfoSize/StructDef at import time, so drop the
     # cached module too or isinstance checks would use a stale stub class.
-    sys.modules.pop("sltgui._struct_instance_model", None)
+    sys.modules.pop("sltmodel.struct_instance", None)
     sys.modules.pop("sltgui.binary_editor_window", None)
 
     return importlib.import_module("sltgui.binary_editor_window")

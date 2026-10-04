@@ -36,7 +36,7 @@ def test_load_pcap_layout():
 
 def test_directly_loaded_pcap_contains_packet_structures():
     """The PCAP JSON contains its referenced packet types."""
-    resource = files("sltgui.resources").joinpath("pcap.json")
+    resource = files("sltmodel.resources").joinpath("pcap.json")
     with as_file(resource) as path:
         layout = load_struct_layout(path)
 
@@ -52,7 +52,7 @@ def test_decode_little_endian_pcap_packet_data():
         "4500 0020 1234 0000 4011 0000 c0000201 c6336402 "
         "3039 0035 000c 0000 deadbeef")
 
-    resource = files("sltgui.resources").joinpath("pcap.json")
+    resource = files("sltmodel.resources").joinpath("pcap.json")
     with as_file(resource) as path:
         layout = load_struct_layout(path)
     instance = decode(layout, data)

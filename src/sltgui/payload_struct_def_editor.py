@@ -7,16 +7,11 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from sltcodec import StructLayout, TypeDict, load_struct_layout
+from sltmodel.payload_struct_defs import (PayloadStructDef,
+                                          load_payload_struct_defs,
+                                          save_payload_struct_defs)
 from tkinterex import SelectDialog, show_modal_window
 from treeviewex import TreeviewEx
-
-if __package__:
-    definitions_module = import_module("._payload_struct_defs", __package__)
-else:
-    definitions_module = import_module("_payload_struct_defs")
-PayloadStructDef = definitions_module.PayloadStructDef
-load_payload_struct_defs = definitions_module.load_payload_struct_defs
-save_payload_struct_defs = definitions_module.save_payload_struct_defs
 
 
 class PayloadStructDefEditor(tk.Toplevel):

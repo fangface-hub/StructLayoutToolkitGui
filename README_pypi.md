@@ -5,6 +5,9 @@ binary files using structure layouts defined by the StructLayoutToolkit
 ecosystem. It combines a hierarchical binary viewer with editors for structure
 and enumeration definitions.
 
+The shared data models and packet-processing logic are provided by the
+separately installable `sltmodel` package, which can also be used by CLI tools.
+
 ## Features
 
 - Decode binary files with a selected `StructDef`.
