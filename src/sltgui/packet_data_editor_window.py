@@ -33,6 +33,18 @@ else:
     NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
 
 
+def _to_bytes(data: object) -> bytes:
+    """Return a contiguous bytes snapshot of bytes-like or virtual data."""
+    if hasattr(data, "to_bytes") and not isinstance(data, int):
+        return data.to_bytes()
+    return bytes(data)
+
+
+def _hex_text(data: object) -> str:
+    """Return upper-case space separated hex using C-level conversion."""
+    return _to_bytes(data).hex(" ").upper()
+
+
 class _NestedTreeviewEx(TreeviewEx):  # pylint: disable=too-many-ancestors
     """TreeviewEx that permits editing child rows."""
 
@@ -128,6 +140,7 @@ class PacketDataEditorWindow(tk.Toplevel):
         self._detail_raw_row_id: str | None = None
         self._detail_raw_original_text = ""
         self._detail_path_by_row_id: dict[str, tuple[int, ...]] = {}
+        self._detail_pending: dict[str, tuple] = {}
         self.bytes_per_row = 4
         self._lua_plugin_manager = LuaPluginManager(self.apl_dir / "plugins")
 
@@ -311,6 +324,8 @@ class PacketDataEditorWindow(tk.Toplevel):
         self._set_detail_raw_mode(True)
         self.detail_tree.pack(fill=tk.BOTH, expand=True)
         self.detail_tree.on_edit_started = self._on_detail_edit_started
+        self.detail_tree.lazy_loader = self._load_detail_children
+        self.detail_tree.bind("<<TreeviewOpen>>", self._on_detail_open)
         self.detail_tree.entry.bind("<Return>",
                                     self._on_detail_raw_hex_finished,
                                     add="+")
@@ -551,6 +566,7 @@ class PacketDataEditorWindow(tk.Toplevel):
         self._detail_raw_row_id = None
         self._detail_value_row_id = None
         self._detail_path_by_row_id = {}
+        self._detail_pending = {}
         self.detail_tree.delete(*self.detail_tree.get_children())
         if self.struct_instance is not None:
             self._set_detail_raw_mode(False)
@@ -592,7 +608,7 @@ class PacketDataEditorWindow(tk.Toplevel):
                     "",
                     "",
                     f"{len(values)},0",
-                    " ".join(f"{value:02X}" for value in values),
+                    _hex_text(values),
                 ),
             )
 
@@ -607,31 +623,64 @@ class PacketDataEditorWindow(tk.Toplevel):
         packet = self._selected_packet()
         if packet is None:
             return
+        self._insert_instance_rows(instance, parent_id, base_offset,
+                                   field_path, _to_bytes(packet.data))
+
+    def _insert_instance_rows(
+            self,
+            instance: object,
+            parent_id: str,
+            base_offset: InfoSize,
+            field_path: tuple[int, ...],
+            data: bytes,
+    ) -> None:
+        """Insert fields recursively using one shared payload snapshot."""
+        insert = self.detail_tree.insert
+        type_dict = self.struct_layout.type_dict
         for field_index, field_instance in enumerate(instance.field_instances):
             field_def = field_instance.field_def
             offset = base_offset + field_def.offset
-            field_bytes = bits_get(packet.data, offset, field_def.size).to_bytes
-            row_id = self.detail_tree.insert(
+            field_bytes = bits_get(data, offset, field_def.size).to_bytes
+            row_id = insert(
                 parent_id,
                 tk.END,
                 values=(
                     format_infosize(offset),
                     field_def.name,
                     format_type(field_def.type),
-                    format_field_value(field_instance,
-                                       self.struct_layout.type_dict),
+                    format_field_value(field_instance, type_dict),
                     format_infosize(field_def.size),
                     field_bytes.hex(" ").upper(),
                 ),
-                open=True,
+                open=False,
             )
             current_path = field_path + (field_index, )
             self._detail_path_by_row_id[row_id] = current_path
             if hasattr(field_instance.value, "field_instances"):
                 self.detail_tree.set_readonly_cell(
                     (row_id, self.DETAIL_VALUE_COLUMN_ID), True)
-                self._insert_instance(field_instance.value, row_id, offset,
-                                      current_path)
+                placeholder = insert(row_id, tk.END)
+                self._detail_pending[row_id] = (field_instance.value, offset,
+                                                current_path, placeholder)
+
+    def _on_detail_open(self, _event: tk.Event) -> None:
+        """Create children of the node being opened."""
+        row_id = self.detail_tree.focus()
+        if row_id:
+            self._load_detail_children(row_id)
+
+    def _load_detail_children(self, row_id: str) -> None:
+        """Replace a placeholder with the real child rows on first open."""
+        pending = self._detail_pending.pop(row_id, None)
+        if pending is None:
+            return
+        instance, offset, path, placeholder = pending
+        packet = self._selected_packet()
+        if packet is None:
+            return
+        self.detail_tree.delete(placeholder)
+        self._insert_instance_rows(instance, row_id, offset, path,
+                                   _to_bytes(packet.data))
 
     def _save_capture(self) -> None:
         """Save the current capture to its file, prompting
@@ -674,9 +723,43 @@ class PacketDataEditorWindow(tk.Toplevel):
         self._remember_data_dir(path)
         messagebox.showinfo("Saved", f"Saved to:\n{path}", parent=self)
 
+    def _update_selected_in_place(self, sequence: int) -> bool:
+        """Update the edited packet rows without rebuilding the list.
+
+        Returns False when the tree does not mirror the document, so the
+        caller must rebuild it.
+        """
+        document = self.document
+        row_map = getattr(self, "_packet_index_by_row_id", None)
+        if document is None or not row_map:
+            return False
+        selected = self.tree.selection()
+        index = row_map.get(selected[0]) if selected else None
+        if (index is None or index >= len(document.packets)
+                or document.packets[index].sequence != sequence
+                or len(self.tree.get_children()) != len(document.packets)):
+            return False
+        packet = document.packets[index]
+        row_id = str(index)
+        values = list(self.tree.item(row_id, "values"))
+        values[-1] = _hex_text(packet.data)
+        self.tree.item(row_id, values=values)
+        for fragment_index in range(len(self.tree.get_children(row_id))):
+            fragment = packet.fragments[fragment_index]
+            fragment_row_id = f"{index}:fragment:{fragment_index}"
+            fragment_values = list(self.tree.item(fragment_row_id, "values"))
+            fragment_values[-1] = _hex_text(self.document.data[
+                fragment.capture_offset:fragment.capture_offset +
+                fragment.length])
+            self.tree.item(fragment_row_id, values=fragment_values)
+        return True
+
     def _refresh_packets(self, selected_sequence: int | None = None) -> None:
         """Refresh the packet list tree view, optionally selecting
            a specific packet."""
+        if selected_sequence is not None and self._update_selected_in_place(
+                selected_sequence):
+            return
         self._packet_index_by_row_id = {}
         self.tree.delete(*self.tree.get_children())
         if self.document is None:
@@ -688,6 +771,7 @@ class PacketDataEditorWindow(tk.Toplevel):
                                                str(packet.protocol))
             identification = ("" if packet.identification is None else
                               f"0x{packet.identification:08X}")
+            packet_hex = _hex_text(packet.data)
             self.tree.insert(
                 "",
                 tk.END,
@@ -703,7 +787,7 @@ class PacketDataEditorWindow(tk.Toplevel):
                     identification,
                     len(packet.data),
                     "Complete" if packet.complete else "Incomplete",
-                    " ".join(f"{value:02X}" for value in packet.data),
+                    packet_hex,
                 ),
                 open=True,
             )
@@ -730,7 +814,7 @@ class PacketDataEditorWindow(tk.Toplevel):
                         "",
                         fragment.length,
                         f"Offset {fragment.payload_offset}",
-                        " ".join(f"{value:02X}" for value in fragment_data),
+                        _hex_text(fragment_data),
                     ),
                 )
             if selected_sequence == packet.sequence:

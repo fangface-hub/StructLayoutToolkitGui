@@ -913,6 +913,9 @@ def test_insert_instance_builds_nested_rows_and_paths(monkeypatch):
         def set_readonly_cell(self, cell, readonly):
             self.readonly.append((cell, readonly))
 
+        def delete(self, *items):
+            self.deleted = items
+
     def field(name, offset, value):
         definition = types.SimpleNamespace(name=name,
                                            offset=offset,
@@ -930,6 +933,7 @@ def test_insert_instance_builds_nested_rows_and_paths(monkeypatch):
     editor.struct_layout = types.SimpleNamespace(
         type_dict=types.SimpleNamespace(enum_dict={}))
     editor._detail_path_by_row_id = {}
+    editor._detail_pending = {}
     editor._selected_packet = lambda: types.SimpleNamespace(data=b"packet")
     monkeypatch.setattr(packet_editor_module, "bits_get",
                         lambda *_args: types.SimpleNamespace(to_bytes=b"\xab"))
@@ -941,12 +945,23 @@ def test_insert_instance_builds_nested_rows_and_paths(monkeypatch):
 
     editor._insert_instance(instance, "", 10)
 
+    # Nested fields get a placeholder child until they are first opened.
     assert [row[1] for row in editor.detail_tree.rows] == ["", "row-0", ""]
     assert editor._detail_path_by_row_id == {
         "row-0": (0, ),
-        "row-1": (0, 0),
         "row-2": (1, ),
     }
+    assert list(editor._detail_pending) == ["row-0"]
+
+    editor._load_detail_children("row-0")
+    editor._load_detail_children("row-0")
+
+    assert editor.detail_tree.deleted == ("row-1", )
+    assert [row[1] for row in editor.detail_tree.rows] == [
+        "", "row-0", "", "row-0"
+    ]
+    assert editor._detail_path_by_row_id["row-3"] == (0, 0)
+    assert not editor._detail_pending
     assert editor.detail_tree.rows[0][2]["values"][-1] == "AB"
     assert editor.detail_tree.readonly == [
         (("row-0", editor.DETAIL_VALUE_COLUMN_ID), True)
