@@ -192,24 +192,24 @@ wheels = [
 
 [[package]]
 name = "sltcalc"
-version = "1.1.1"
+version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7c/49/aa03926ebc69cf17ea22b9545328d95221b8f2499c38ebf24e58e1d4bbaa/sltcalc-1.1.1.tar.gz", hash = "sha256:3af9a82bb3611e028c03e16fe715ba037036cd32bde5deb8d10afd2b99e342d0", size = 10637, upload-time = "2026-10-09T14:58:58.023Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/e9/6b7334735b78aa8c4242c912aadd428fd7d28be969e4217fecd3df4b0890/sltcalc-1.1.2.tar.gz", hash = "sha256:c5b6bb291d1a80205c6569304c2832279fecfd73de1efccc26777d8a83954916", size = 10881, upload-time = "2026-10-09T16:37:09.703Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/22/ccf1208800436d19173653902eef09106a068bd51c1f5314ebaddba2c7b3/sltcalc-1.1.1-py3-none-any.whl", hash = "sha256:95090613c7172a6889243a158073efbf8d3ce25a9bf453f8411dad09897df394", size = 4923, upload-time = "2026-10-09T14:58:57.24Z" },
+    { url = "https://files.pythonhosted.org/packages/28/10/fab275ba243f26a0b41032c4667a4a13fc1753922c1c69b12d5179e48a1e/sltcalc-1.1.2-py3-none-any.whl", hash = "sha256:fa4dae55ceb48d7481a505d512035d5cfdfc5316f592617367e32e75073c464f", size = 5056, upload-time = "2026-10-09T16:37:08.627Z" },
 ]
 
 [[package]]
 name = "sltcodec"
-version = "2.7.3"
+version = "2.7.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "sltcalc" },
     { name = "sltcore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/0f/9f6f80579620ea93695407f85b702d28e89439b3dca107423116d4aff42a/sltcodec-2.7.3.tar.gz", hash = "sha256:fbaf16ac5a77dc05a314beb4a3b3e639a88b76ab146d1e6f37f0f2ef45d40b65", size = 33839, upload-time = "2026-10-09T15:08:17.725Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/17/57/81f149679d49504af29e321d9b332ef3744441783052d49513ada1c80285/sltcodec-2.7.4.tar.gz", hash = "sha256:49e37ce05302a2d7cb01909977f7b5c03b0504ca80b0893738b1bcf5bd233bf6", size = 33854, upload-time = "2026-10-12T14:58:32.046Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/62/1fcf36556839b59955c322830c8cf9adb149052176ab00f28c5bba060bf7/sltcodec-2.7.3-py3-none-any.whl", hash = "sha256:293c98feda8d5ff9d5bfc6649f4b48cf52f45814e7274994165b7d8fe9a26b16", size = 18432, upload-time = "2026-10-09T15:08:16.71Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/1a/9e49a187668811f584578667f6f56c1e2d9e6b605f394773c862a0d35887/sltcodec-2.7.4-py3-none-any.whl", hash = "sha256:1dbe39b34078a663b7326e79cd996fea4427c62e1fb29f5c27df90c4d4f17261", size = 18434, upload-time = "2026-10-12T14:58:31.002Z" },
 ]
 
 [[package]]
@@ -223,10 +223,9 @@ wheels = [
 
 [[package]]
 name = "sltgui"
-version = "1.5.2"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "lupa" },
     { name = "sltcalc" },
     { name = "sltcodec" },
     { name = "sltcore" },
@@ -243,13 +242,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lupa", specifier = ">=2.8" },
-    { name = "sltcalc", specifier = ">=1.1.1" },
-    { name = "sltcodec", specifier = ">=2.7.3" },
+    { name = "sltcalc", specifier = ">=1.1.2" },
+    { name = "sltcodec", specifier = ">=2.7.4" },
     { name = "sltcore", specifier = ">=1.7.1" },
-    { name = "sltmodel", specifier = ">=1.0.4" },
+    { name = "sltmodel", specifier = ">=1.1.2" },
     { name = "tkinterex", specifier = ">=1.2.1" },
-    { name = "treeviewex", specifier = ">=1.2.1" },
+    { name = "treeviewex", specifier = ">=1.2.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -260,16 +258,17 @@ dev = [
 
 [[package]]
 name = "sltmodel"
-version = "1.0.4"
+version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "lupa" },
     { name = "sltcalc" },
     { name = "sltcodec" },
     { name = "sltcore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/25/d7/477eca7617cfa1a718be7ed90e2f6ab07b03dfa927922c17c8fc5a5db442/sltmodel-1.0.4.tar.gz", hash = "sha256:187d490e462ea80bfd2062063a1d2e8bdbed6752f2b9e9d7fb77826b24386ad9", size = 23905, upload-time = "2026-10-09T15:13:24.222Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/2d/40b64bd43b5ea16b4e5f75a17b46a315042e146ccea77c811a49bebb26df/sltmodel-1.1.2.tar.gz", hash = "sha256:40ba9baaf640283c6419470dce9689cb2155bdc2b2dc73a5c6dc74bd46d86b5e", size = 44130, upload-time = "2026-10-12T15:02:31.468Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/55/2087203b6174eabde00daf4a7ea2dff0c9e731a7ff315654aab9fa4e3ec0/sltmodel-1.0.4-py3-none-any.whl", hash = "sha256:b5e819167e3071951346683823d41a376020b945c57d78b12626589941c202fe", size = 18551, upload-time = "2026-10-09T15:13:23.311Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/f0/934f3d0cb15be4bbb6198ec3571d4e83047c756c5a5957052d22192f9084/sltmodel-1.1.2-py3-none-any.whl", hash = "sha256:43463f1240e32ae15cd750c06d66937ea1b213575fac0ce3d99263032d2613b0", size = 25036, upload-time = "2026-10-12T15:02:30.597Z" },
 ]
 
 [[package]]
@@ -283,9 +282,9 @@ wheels = [
 
 [[package]]
 name = "treeviewex"
-version = "1.2.1"
+version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/03/d7/5d804ecfecc4c0724240b0d98b767a56806000c4f87eb528dca158e0b27e/treeviewex-1.2.1.tar.gz", hash = "sha256:26eadb3b0a1a9c8b8b0998db34715cb384210c28f27182cf406b3826fe021f0f", size = 48070, upload-time = "2026-09-22T06:16:41.938Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/41/e0/6e4d67970627f3ea8a8721e65a4eb9a556e2056c947c81d821272632763c/treeviewex-1.2.2.tar.gz", hash = "sha256:150f9fac895239a0930821cf1cd5f2c28b3201e8b9ecf212c2dc577d0180676b", size = 48488, upload-time = "2026-10-12T14:43:01.2Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/9b/fe9735612e40af1231da9683d79e8c6a75bb525e2b93e7df0f7559724626/treeviewex-1.2.1-py3-none-any.whl", hash = "sha256:52898fbdb14707f157fe10cc0f3168025d54e04109862e1c01a7c233ade03228", size = 7239, upload-time = "2026-09-22T06:16:41.174Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/2e/047162761b4597064ab5149ef614715e33e8733e2e4c8fabfe50572bfb64/treeviewex-1.2.2-py3-none-any.whl", hash = "sha256:ef48207dfe367d8e8d086cc372cb1b22de2a92db26d332df39e6eaeaf357603d", size = 7701, upload-time = "2026-10-12T14:43:00.366Z" },
 ]

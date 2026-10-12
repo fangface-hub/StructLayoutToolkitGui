@@ -8,11 +8,11 @@ import tkinter as tk
 from importlib import import_module
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import TYPE_CHECKING
 
 from sltcodec import StructLayout, decode, encode
 from sltcore import InfoSize, bits_get
 from sltmodel.infosize import format_infosize
+from sltmodel.lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
 from sltmodel.packet_data import CaptureDocument, ReassembledPacket
 from sltmodel.payload_struct_defs import matching_struct_layout
 from sltmodel.struct_instance import (format_field_value, format_type,
@@ -20,17 +20,6 @@ from sltmodel.struct_instance import (format_field_value, format_type,
 from tkinterex import (OperationCanceledError, run_with_progress,
                        show_modal_window)
 from treeviewex import TreeviewEx
-
-if TYPE_CHECKING:
-    from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
-elif __package__:
-    lua_plugins_module = import_module(".lua_plugins", __package__)
-    LuaPluginManager = lua_plugins_module.LuaPluginManager
-    NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
-else:
-    lua_plugins_module = import_module("lua_plugins")
-    LuaPluginManager = lua_plugins_module.LuaPluginManager
-    NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
 
 
 def _to_bytes(data: object) -> bytes:

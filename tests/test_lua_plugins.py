@@ -2,7 +2,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from sltgui.lua_plugins import LuaPluginManager
+from sltmodel.lua_plugins import LuaPluginManager
 
 _FieldInstance = type(
     "FieldInstance",

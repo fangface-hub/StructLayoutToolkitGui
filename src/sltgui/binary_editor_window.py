@@ -13,6 +13,9 @@ from sltcodec import (StructLayout, TypeDict, decode, encode,
                       load_struct_layout, save_struct_layout)
 from sltcore import InfoSize, bits_get, virtual_bytearray
 from sltmodel.infosize import format_infosize
+from sltmodel.lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
+from sltmodel.resources import (load_elf_layout, load_pcap_layout,
+                               load_pcapng_layout, load_pe_layout)
 from sltmodel.struct_instance import (field_instance_at_path,
                                       format_field_value, format_type,
                                       minimum_struct_size,
@@ -21,20 +24,6 @@ from sltmodel.struct_instance import (field_instance_at_path,
 from tkinterex import (ConfirmDialog, OperationCanceledError, SelectDialog,
                        run_with_progress, show_modal_window)
 from treeviewex import TreeviewEx
-
-if __package__:
-    from .lua_plugins import NO_LUA_PLUGINS, LuaPluginManager
-    from .resources import (load_elf_layout, load_pcap_layout,
-                            load_pcapng_layout, load_pe_layout)
-else:
-    lua_plugins_module = import_module("lua_plugins")
-    LuaPluginManager = lua_plugins_module.LuaPluginManager
-    NO_LUA_PLUGINS = lua_plugins_module.NO_LUA_PLUGINS
-    resources_module = import_module("resources")
-    load_pcap_layout = resources_module.load_pcap_layout
-    load_pcapng_layout = resources_module.load_pcapng_layout
-    load_pe_layout = resources_module.load_pe_layout
-    load_elf_layout = resources_module.load_elf_layout
 
 SAFE_FUNCS.setdefault("InfoSize", InfoSize)
 

@@ -103,11 +103,13 @@ program segment type, section type, and segment or section flags.
 The same resources are available from Python:
 
 ```python
-from sltgui.resources import load_pcap_layout, load_pcapng_layout, load_pe_layout
+from sltmodel.resources import (load_elf_layout, load_pcap_layout,
+                                load_pcapng_layout, load_pe_layout)
 
 pcap_layout = load_pcap_layout()
 pcapng_layout = load_pcapng_layout()
 pe_layout = load_pe_layout()
+elf_layout = load_elf_layout()
 ```
 
 ## Reassembled Packet Data Editor

@@ -113,7 +113,14 @@ def _load_binary_editor_module(monkeypatch):
     sys.modules["tkinterex"] = tkinterex_module
 
     treeviewex_module = types.ModuleType("treeviewex")
-    treeviewex_module.TreeviewEx = object
+
+    class DummyTreeviewEx:
+        """Minimal base widget behavior used by nested treeview tests."""
+
+        def on_double_click(self, _event):
+            return None
+
+    treeviewex_module.TreeviewEx = DummyTreeviewEx
 
     monkeypatch.setitem(sys.modules, "sltcodec", sltcodec_module)
     monkeypatch.setitem(sys.modules, "sltcore", sltcore_module)
@@ -1902,6 +1909,7 @@ def test_redecode_guards_and_cancellation(monkeypatch):
     editor.struct_instance = "original"
     editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
         module._OperationCanceledError())
+    errors = []
     editor._redecode_binary()
     assert editor.struct_instance == "original"
 
@@ -2459,3 +2467,499 @@ def test_insert_instance_marks_plain_nested_parent_readonly(monkeypatch):
     )
 
     assert editor.tree.readonly == [("0", editor.VALUE_COLUMN_ID)]
+
+
+def test_binary_editor_initialization_sets_optional_input_state(
+        monkeypatch, tmp_path):
+    """Initialization handles explicit paths and caller-supplied input data."""
+    module = _load_binary_editor_module(monkeypatch)
+    calls = []
+    monkeypatch.setattr(module.tk.Toplevel, "__init__",
+                        lambda self, parent: calls.append(("parent", parent)))
+    monkeypatch.setattr(module.tk.Toplevel, "withdraw",
+                        lambda self: calls.append(("withdraw", self)))
+    monkeypatch.setattr(module.tk.Toplevel, "deiconify",
+                        lambda self: calls.append(("deiconify", self)))
+    monkeypatch.setattr(module.BinaryEditorWindow, "title",
+                        lambda self, value: calls.append(("title", value)))
+    monkeypatch.setattr(module.BinaryEditorWindow, "geometry",
+                        lambda self, value: calls.append(("geometry", value)))
+    monkeypatch.setattr(module.BinaryEditorWindow, "_build_menu",
+                        lambda self: calls.append(("menu", self)))
+    monkeypatch.setattr(module.BinaryEditorWindow, "_build_ui",
+                        lambda self: calls.append(("ui", self)))
+    monkeypatch.setattr(module.BinaryEditorWindow, "_load_dir_setting",
+                        lambda _self, _key: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "_refresh_tree",
+                        lambda self: calls.append(("refresh", self)))
+    plugin_managers = []
+    monkeypatch.setattr(
+        module,
+        "LuaPluginManager",
+        lambda path: (plugin_managers.append(path) or "plugin-manager"),
+    )
+
+    editor = object.__new__(module.BinaryEditorWindow)
+    parent = object()
+    input_data = bytearray(b"\x01\x02")
+    editor.__init__(
+        parent,
+        apl_dir=tmp_path / "app",
+        data_dir=tmp_path / "data",
+        input_data=input_data,
+    )
+
+    assert editor.apl_dir == tmp_path / "app"
+    assert editor.data_dir == tmp_path / "data"
+    assert editor.last_bin_dir is None
+    assert editor.last_struct_layout_dir is None
+    assert editor.binary_file is None
+    assert editor.binary_data is input_data
+    assert editor._binary_file_masked is True
+    assert editor.struct_instance is None
+    assert editor.struct_layout.struct_def_name == ""
+    assert editor._lua_plugin_manager == "plugin-manager"
+    assert editor._raw_edit_row_id is None
+    assert editor._value_edit_row_id is None
+    assert editor._value_edit_original_text == ""
+    assert editor._instance_path_by_row_id == {}
+    assert editor.bytes_per_row == 4
+    assert editor._save_on_close is True
+    assert plugin_managers == [tmp_path / "app" / "plugins"]
+    assert [call[0] for call in calls] == [
+        "parent",
+        "withdraw",
+        "title",
+        "geometry",
+        "menu",
+        "ui",
+        "refresh",
+        "deiconify",
+    ]
+
+
+def test_binary_editor_build_ui_wires_tree_edit_events(monkeypatch):
+    """UI widgets and all binary tree editing bindings are initialized."""
+    module = _load_binary_editor_module(monkeypatch)
+    calls = []
+
+    class WidgetRecorder:
+        def __init__(self, parent=None, **options):
+            self.parent = parent
+            self.options = options
+            self.calls = []
+            self.entry = types.SimpleNamespace(bind=self._entry_bind)
+
+        def _entry_bind(self, *args, **kwargs):
+            self.calls.append(("entry_bind", args, kwargs))
+
+        def configure(self, *args, **kwargs):
+            self.calls.append(("configure", args, kwargs))
+
+        def set(self, value):
+            self.calls.append(("set", value))
+
+        def pack(self, *args, **kwargs):
+            self.calls.append(("pack", args, kwargs))
+
+        def heading(self, *args, **kwargs):
+            self.calls.append(("heading", args, kwargs))
+
+        def column(self, *args, **kwargs):
+            self.calls.append(("column", args, kwargs))
+
+        def set_readonly_column(self, *args, **kwargs):
+            self.calls.append(("readonly", args, kwargs))
+
+        def bind(self, *args, **kwargs):
+            self.calls.append(("bind", args, kwargs))
+
+    class StyleRecorder:
+        def __init__(self, _parent):
+            pass
+
+        def configure(self, *args, **kwargs):
+            calls.append(("style", args, kwargs))
+
+    monkeypatch.setattr(module.ttk, "Frame", WidgetRecorder)
+    monkeypatch.setattr(module.ttk, "Label", WidgetRecorder)
+    monkeypatch.setattr(module.ttk, "Combobox", WidgetRecorder)
+    monkeypatch.setattr(module.ttk, "Button", WidgetRecorder)
+    monkeypatch.setattr(module.ttk, "Style", StyleRecorder)
+    monkeypatch.setattr(module, "_NestedTreeviewEx", WidgetRecorder)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.bytes_per_row = 4
+
+    editor._build_ui()
+
+    assert editor.bytes_per_row_combo.options == {
+        "state": "readonly",
+        "width": 4,
+        "values": (1, 2, 4, 8, 16),
+    }
+    assert editor.bytes_per_row_combo.calls[0] == ("set", "4")
+    assert editor.tree.options == {
+        "columns": module.BinaryEditorWindow.BINARY_COLUMNS,
+        "show": "tree headings",
+        "selectmode": "browse",
+        "style": "Binary.Treeview",
+    }
+    assert editor.tree.on_edit_started.__self__ is editor
+    assert [call[1][0] for call in editor.tree.calls
+            if call[0] == "readonly"] == [
+                "#1", "#3", "#4", "#6", "#2", "#5",
+            ]
+    assert [call[1][0]
+            for call in editor.tree.entry.bind.__self__.calls
+            if call[0] == "entry_bind"] == [
+                "<KeyRelease>", "<Return>", "<FocusOut>",
+            ]
+    assert any(call[0] == "bind" and call[1][0] == "<Button-3>"
+               for call in editor.tree.calls)
+    assert calls == [
+        ("style", ("Binary.Treeview", ), {"font": "TkFixedFont"}),
+    ]
+
+
+def test_nested_treeview_double_click_notifies_only_on_edit(monkeypatch):
+    """Only a successful base edit notifies the window of the clicked cell."""
+    module = _load_binary_editor_module(monkeypatch)
+    tree = object.__new__(module._NestedTreeviewEx)
+    event = object()
+    cell = ("child", "#5")
+    monkeypatch.setattr(
+        module._NestedTreeviewEx,
+        "get_clicked_cell_id_pair",
+        lambda _self, received: cell if received is event else None,
+        raising=False,
+    )
+    notifications = []
+    tree.on_edit_started = notifications.append
+
+    monkeypatch.setattr(module.TreeviewEx, "on_double_click",
+                        lambda _self, _event: "break")
+    assert tree.on_double_click(event) == "break"
+    assert notifications == [cell]
+
+    monkeypatch.setattr(module.TreeviewEx, "on_double_click",
+                        lambda _self, _event: None)
+    assert tree.on_double_click(event) is None
+    assert notifications == [cell]
+
+
+def test_nested_treeview_rejects_empty_cell_row(monkeypatch):
+    """An empty row identifier is invalid even if the tree has that column."""
+    module = _load_binary_editor_module(monkeypatch)
+    tree = object.__new__(module._NestedTreeviewEx)
+    tree.exists = lambda _row_id: True
+
+    assert not tree.is_valid_cell(("", "#1"))
+
+
+def test_instance_tree_depth_for_leaf_and_nested_structures(monkeypatch):
+    """Tree indentation counts only visible nested structure levels."""
+    module = _load_binary_editor_module(monkeypatch)
+    leaf = types.SimpleNamespace(field_instances=[])
+    parent = types.SimpleNamespace(field_instances=[
+        types.SimpleNamespace(value=leaf),
+        types.SimpleNamespace(value=1),
+    ])
+
+    assert module.BinaryEditorWindow._instance_tree_depth(leaf) == 1
+    assert module.BinaryEditorWindow._instance_tree_depth(parent) == 2
+
+
+def test_csv_export_reports_empty_tree(monkeypatch, tmp_path):
+    """CSV export reports when there are no tree rows to write."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.data_dir = tmp_path
+    editor._collect_tree_rows_for_export = lambda: []
+    monkeypatch.setattr(
+        module.filedialog, "asksaveasfilename",
+        lambda **_kwargs: str(tmp_path / "empty.csv"),
+    )
+    errors = []
+    monkeypatch.setattr(
+        module.messagebox, "showerror",
+        lambda *args, **kwargs: errors.append((args, kwargs)),
+    )
+
+    editor._export_tree_to_csv()
+
+    assert errors == [(("No Data", "No rows to export."), {"parent": editor})]
+
+
+def test_json_export_honors_dialog_cancellation(monkeypatch, tmp_path):
+    """Canceling JSON export does not collect rows or write a file."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.data_dir = tmp_path
+    editor._collect_tree_nodes_for_json = lambda: (_ for _ in ()).throw(
+        AssertionError("nodes must not be collected after cancel"))
+    monkeypatch.setattr(
+        module.filedialog, "asksaveasfilename",
+        lambda **_kwargs: "",
+    )
+
+    editor._export_tree_to_json()
+
+
+def test_nested_treeview_initializes_edit_callback(monkeypatch):
+    """The nested widget delegates initialization and sets its callback."""
+    module = _load_binary_editor_module(monkeypatch)
+    calls = []
+    monkeypatch.setattr(
+        module.TreeviewEx,
+        "__init__",
+        lambda self, *args, **kwargs: calls.append((args, kwargs)),
+    )
+    tree = object.__new__(module._NestedTreeviewEx)
+
+    tree.__init__("parent", columns=("value",))
+
+    assert calls == [(("parent",), {"columns": ("value",)})]
+    assert tree.on_edit_started is None
+
+
+def test_binary_editor_initialization_without_input_data(
+        monkeypatch, tmp_path):
+    """File-backed editor initialization starts with an empty bytearray."""
+    module = _load_binary_editor_module(monkeypatch)
+    monkeypatch.setattr(module.tk.Toplevel, "__init__", lambda *_args: None)
+    monkeypatch.setattr(module.tk.Toplevel, "withdraw", lambda _self: None)
+    monkeypatch.setattr(module.tk.Toplevel, "deiconify", lambda _self: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "title",
+                        lambda *_args: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "geometry",
+                        lambda *_args: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "_build_menu",
+                        lambda _self: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "_build_ui",
+                        lambda _self: None)
+    monkeypatch.setattr(module.BinaryEditorWindow, "_load_dir_setting",
+                        lambda _self, _key: None)
+    monkeypatch.setattr(module, "LuaPluginManager", lambda _path: object())
+
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.__init__(object(), apl_dir=tmp_path, data_dir=tmp_path)
+
+    assert editor.binary_data == bytearray()
+    assert editor._binary_file_masked is False
+    assert editor._save_on_close is True
+
+
+def test_settings_write_error_does_not_break_directory_selection(
+        monkeypatch, tmp_path):
+    """An unwritable settings file does not block remembering a path."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.apl_dir = tmp_path
+    monkeypatch.setattr(
+        module.Path,
+        "write_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("denied")),
+    )
+
+    editor._remember_data_dir(str(tmp_path / "input.bin"))
+
+    assert editor.data_dir == tmp_path
+
+
+def test_layout_selection_and_activation_cancellation(monkeypatch):
+    """Canceling struct selection or decoding leaves existing state intact."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.struct_layout = module.StructLayout(
+        "",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    editor._select_struct = lambda: None
+    editor._select_struct_definition()
+
+    editor._select_struct = lambda: "Packet"
+    editor.binary_data = bytearray(b"\x01")
+    editor.struct_instance = "old instance"
+    editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
+        module._OperationCanceledError())
+    editor._select_struct_definition()
+    assert editor.struct_instance == "old instance"
+
+    layout = module.StructLayout(
+        "Packet",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    editor.struct_layout_file = "old file"
+    editor._activate_struct_layout(layout, None)
+    assert editor.struct_layout_file == "old file"
+    assert editor.struct_instance == "old instance"
+
+
+def test_layout_save_cancel_and_binary_open_cancel(monkeypatch, tmp_path):
+    """Canceled layout saves and binary opens leave current paths unchanged."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.apl_dir = tmp_path
+    editor.data_dir = tmp_path
+    editor.struct_layout = module.StructLayout("", module.TypeDict())
+    editor.struct_layout_file = None
+    editor.struct_layout.type_dict.struct_dict["Packet"] = object()
+    editor.binary_file = None
+    editor.binary_data = bytearray(b"old")
+    editor.struct_instance = None
+    editor._select_struct = lambda: None
+    monkeypatch.setattr(
+        module.filedialog, "asksaveasfilename",
+        lambda **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        module.filedialog, "askopenfilename",
+        lambda **_kwargs: "",
+    )
+    writes = []
+    editor._write_struct_layout = writes.append
+    editor._save_struct_layout_as()
+    editor._open_binary()
+
+    assert writes == []
+    assert editor.struct_layout_file is None
+    assert editor.binary_file is None
+    assert editor.binary_data == bytearray(b"old")
+
+
+def test_new_binary_and_open_layout_cancel_decode(monkeypatch, tmp_path):
+    """Canceled new-binary and loaded-layout decodes preserve state."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.apl_dir = tmp_path
+    editor.data_dir = tmp_path
+    editor.struct_layout = module.StructLayout(
+        "Packet",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    editor.binary_data = bytearray(b"old")
+    editor.struct_instance = "old instance"
+    original_layout = editor.struct_layout
+    monkeypatch.setattr(module, "minimum_struct_size", lambda _definition: 1)
+    editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
+        module._OperationCanceledError())
+    editor._new_binary()
+
+    assert editor.binary_data == bytearray(b"old")
+    assert editor.struct_instance == "old instance"
+
+    layout_path = tmp_path / "layout.json"
+    layout_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        module.filedialog, "askopenfilename",
+        lambda **_kwargs: str(layout_path),
+    )
+    layout = module.StructLayout(
+        "Packet",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    monkeypatch.setattr(module, "load_struct_layout", lambda _path: layout)
+    editor.struct_label = types.SimpleNamespace(
+        configure=lambda **_kwargs: None)
+    editor._refresh_tree = lambda: None
+    editor._open_struct_layout()
+
+    assert editor.struct_layout is original_layout
+    assert editor.struct_instance == "old instance"
+
+
+def test_binary_editor_main_wires_close_and_event_loop(monkeypatch):
+    """The application entry point creates, closes, and runs the editor."""
+    module = _load_binary_editor_module(monkeypatch)
+    calls = []
+
+    class RootStub:
+        def withdraw(self):
+            calls.append("withdraw")
+
+        def destroy(self):
+            calls.append("destroy")
+
+        def mainloop(self):
+            calls.append("mainloop")
+
+    class EditorStub:
+        def __init__(self, parent):
+            calls.append(("editor", parent))
+
+        def protocol(self, event, callback):
+            calls.append(("protocol", event, callback))
+
+    root = RootStub()
+    monkeypatch.setattr(module.tk, "Tk", lambda: root)
+    monkeypatch.setattr(module, "BinaryEditorWindow", EditorStub)
+
+    module.main()
+
+    assert calls[:2] == ["withdraw", ("editor", root)]
+    assert calls[2][0:2] == ("protocol", "WM_DELETE_WINDOW")
+    calls[2][2]()
+    assert calls[-2:] == ["mainloop", "destroy"]
+
+
+def test_struct_selection_and_redecode_report_decode_errors(monkeypatch):
+    """Invalid selected layouts surface decode errors without refreshing."""
+    module = _load_binary_editor_module(monkeypatch)
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.struct_layout = module.StructLayout(
+        "Packet",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    editor._select_struct = lambda: "Packet"
+    editor.binary_data = bytearray(b"\x01")
+    errors = []
+    refreshes = []
+    editor._show_decode_error = errors.append
+    editor._refresh_tree = lambda: refreshes.append(True)
+    editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
+        ValueError("select failed"))
+
+    editor._select_struct_definition()
+    assert str(errors[-1]) == "select failed"
+
+    editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
+        NameError("redecode failed"))
+    editor._redecode_binary()
+
+    assert str(errors[-1]) == "redecode failed"
+    assert refreshes == []
+
+
+def test_open_binary_decode_cancellation_keeps_current_file(
+        monkeypatch, tmp_path):
+    """A canceled open decode does not replace the current file or data."""
+    module = _load_binary_editor_module(monkeypatch)
+    path = tmp_path / "input.bin"
+    path.write_bytes(b"\x01")
+    editor = object.__new__(module.BinaryEditorWindow)
+    editor.apl_dir = tmp_path
+    editor.data_dir = tmp_path
+    editor.struct_layout = module.StructLayout(
+        "Packet",
+        types.SimpleNamespace(struct_dict={"Packet": object()}),
+    )
+    editor.binary_file = tmp_path / "current.bin"
+    editor.binary_data = bytearray(b"\x02")
+    editor.struct_instance = "current instance"
+    errors = []
+    editor._remember_data_dir = lambda *_args: None
+    editor._initial_dir = lambda _key: str(tmp_path)
+    editor._decode_with_progress = lambda *_args: (_ for _ in ()).throw(
+        module._OperationCanceledError())
+    monkeypatch.setattr(
+        module.filedialog, "askopenfilename",
+        lambda **_kwargs: str(path),
+    )
+    editor._show_decode_error = errors.append
+
+    editor._open_binary()
+
+    assert editor.binary_file == tmp_path / "current.bin"
+    assert editor.binary_data == bytearray(b"\x02")
+    assert editor.struct_instance == "current instance"
+    assert errors == []

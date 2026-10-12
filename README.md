@@ -66,7 +66,8 @@ Open `htmlcov/index.html` in a browser to inspect uncovered lines and branches.
 | `src/sltgui/enum_def_dict_editor.py` | Modal editor for the `EnumDef` dictionary |
 | `src/sltgui/payload_list_view_window.py` | Read-only per-condition payload field list and CSV row collection |
 | `src/sltgui/payload_struct_def_editor.py` | Editor for ordered payload condition and StructLayout pairs |
-| `src/sltgui/resources/` | PE and ELF StructLayout definitions bundled with the GUI |
+| `sltmodel.resources` | Built-in PCAP, PCAPNG, PE, and ELF StructLayouts |
+| `sltmodel.lua_plugins` | GUI-independent Lua plugin hooks for StructInstances |
 | `src/sltgui/__init__.py` | Public API with lazy imports for the GUI classes |
 | `tests/` | GUI integration tests |
 
@@ -92,15 +93,16 @@ package files. Use **Type Definition > Struct Definitions** or **Enum
 Definitions** to edit them. **Save StructLayout** prompts for a destination the
 first time, after which the saved copy can be updated normally.
 
-The bundled PCAP and PCAPNG StructLayouts can be loaded without external JSON
-files:
+The built-in StructLayouts can be loaded without external JSON files:
 
 ```python
-from sltgui.resources import load_pcap_layout, load_pcapng_layout, load_pe_layout
+from sltmodel.resources import (load_elf_layout, load_pcap_layout,
+                                load_pcapng_layout, load_pe_layout)
 
 pcap_layout = load_pcap_layout()
 pcapng_layout = load_pcapng_layout()
 pe_layout = load_pe_layout()
+elf_layout = load_elf_layout()
 ```
 
 The PCAPNG layout follows each block's total length, supports byte-order changes

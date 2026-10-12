@@ -5,8 +5,8 @@ from sltcalc import SAFE_FUNCS
 from sltcodec import decode, load_struct_layout
 from sltcore import InfoSize
 
-from sltgui.resources import (load_elf_layout, load_pcap_layout,
-                              load_pcapng_layout, load_pe_layout)
+from sltmodel.resources import (load_elf_layout, load_pcap_layout,
+                                load_pcapng_layout, load_pe_layout)
 
 
 def _field_value(instance, name):

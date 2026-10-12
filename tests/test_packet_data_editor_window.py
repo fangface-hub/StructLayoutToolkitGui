@@ -1287,3 +1287,407 @@ def test_main_wires_window_close_and_event_loop(monkeypatch):
     assert calls[2][0:2] == ("protocol", "WM_DELETE_WINDOW")
     calls[2][2]()
     assert calls[-2:] == ["mainloop", "destroy"]
+
+
+def test_bytes_conversion_handles_virtual_data_and_integers():
+    """Virtual byte data uses its conversion method; integers retain bytes()."""
+
+    class VirtualBytes:
+
+        def to_bytes(self):
+            return b"\x12\x34"
+
+    assert packet_editor_module._to_bytes(VirtualBytes()) == b"\x12\x34"
+    assert packet_editor_module._to_bytes(2) == b"\x00\x00"
+
+
+def test_nested_treeview_initializes_edit_callback(monkeypatch):
+    """Nested treeviews initialize their edit callback after the base widget."""
+    calls = []
+    monkeypatch.setattr(
+        packet_editor_module.TreeviewEx,
+        "__init__",
+        lambda self, *args, **kwargs: calls.append((args, kwargs)),
+    )
+    tree = object.__new__(packet_editor_module._NestedTreeviewEx)
+
+    tree.__init__("parent", columns=("value",))
+
+    assert calls == [(("parent",), {"columns": ("value",)})]
+    assert tree.on_edit_started is None
+
+
+def test_export_payload_list_checks_prerequisites_and_cancel(
+        monkeypatch, tmp_path):
+    """Export requires a capture and definitions, and honors dialog cancel."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.data_dir = tmp_path
+    errors = []
+    monkeypatch.setattr(
+        packet_editor_module.messagebox,
+        "showerror",
+        lambda *args, **kwargs: errors.append((args, kwargs)),
+    )
+
+    editor.document = None
+    editor.payload_struct_defs = []
+    editor._export_payload_list()
+    editor.document = object()
+    editor._export_payload_list()
+
+    assert [call[0][0] for call in errors] == [
+        "Export Error",
+        "Export Error",
+    ]
+
+    editor.payload_struct_defs = [object()]
+    monkeypatch.setattr(
+        packet_editor_module.filedialog, "askdirectory",
+        lambda **_kwargs: "",
+    )
+    editor._export_payload_list()
+
+    assert len(errors) == 2
+
+
+def test_export_payload_list_writes_sanitized_csv_files(
+        monkeypatch, tmp_path):
+    """Each payload definition exports headings and rows to its own CSV."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.document = object()
+    editor.data_dir = tmp_path
+    editor.payload_struct_defs = [
+        types.SimpleNamespace(struct_layout=types.SimpleNamespace(
+            struct_def_name="Bad / Name")),
+        types.SimpleNamespace(struct_layout=types.SimpleNamespace(
+            struct_def_name="/")),
+    ]
+    monkeypatch.setattr(
+        packet_editor_module.filedialog, "askdirectory",
+        lambda **_kwargs: str(tmp_path),
+    )
+    calls = []
+
+    class PayloadListViewWindow:
+        PACKET_COLUMNS = (("sequence", "Sequence", None), )
+
+    def collect_payload_rows(_parent, _editor, definition):
+        calls.append(definition)
+        return ["field"], [[1, "value"]]
+
+    monkeypatch.setattr(
+        packet_editor_module,
+        "import_module",
+        lambda name: types.SimpleNamespace(
+            PayloadListViewWindow=PayloadListViewWindow,
+            collect_payload_rows=collect_payload_rows,
+        ),
+    )
+    messages = []
+    monkeypatch.setattr(
+        packet_editor_module.messagebox,
+        "showinfo",
+        lambda *args, **kwargs: messages.append((args, kwargs)),
+    )
+
+    editor._export_payload_list()
+
+    assert calls == editor.payload_struct_defs
+    assert (tmp_path / "01_Bad_Name.csv").read_text(encoding="utf-8") == (
+        "Sequence,field\n1,value\n")
+    assert (tmp_path / "02_payload.csv").read_text(encoding="utf-8") == (
+        "Sequence,field\n1,value\n")
+    assert messages == [(
+        ("Exported", f"Exported 2 file(s) to:\n{tmp_path}"),
+        {"parent": editor},
+    )]
+
+
+def test_export_payload_list_handles_cancel_and_errors(monkeypatch, tmp_path):
+    """Canceled row collection stops quietly and export errors are reported."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.document = object()
+    editor.data_dir = tmp_path
+    editor.payload_struct_defs = [object()]
+    monkeypatch.setattr(
+        packet_editor_module.filedialog, "askdirectory",
+        lambda **_kwargs: str(tmp_path),
+    )
+    failures = [packet_editor_module.OperationCanceledError(),
+                ValueError("invalid row")]
+
+    def collect_payload_rows(*_args):
+        failure = failures.pop(0)
+        raise failure
+
+    class PayloadListViewWindow:
+        PACKET_COLUMNS = ()
+
+    monkeypatch.setattr(
+        packet_editor_module,
+        "import_module",
+        lambda _name: types.SimpleNamespace(
+            PayloadListViewWindow=PayloadListViewWindow,
+            collect_payload_rows=collect_payload_rows,
+        ),
+    )
+    errors = []
+    successes = []
+    monkeypatch.setattr(
+        packet_editor_module.messagebox,
+        "showerror",
+        lambda *args, **kwargs: errors.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        packet_editor_module.messagebox,
+        "showinfo",
+        lambda *args, **kwargs: successes.append((args, kwargs)),
+    )
+
+    editor._export_payload_list()
+    editor._export_payload_list()
+
+    assert errors == [(("Export Error", "invalid row"), {"parent": editor})]
+    assert successes == []
+
+
+def test_open_payload_list_view_supports_package_and_direct_loading(
+        monkeypatch):
+    """Payload view loading resolves both package and script module names."""
+    editor = object.__new__(PacketDataEditorWindow)
+    calls = []
+
+    class PayloadListViewWindow:
+        def __init__(self, parent, packet_editor):
+            calls.append((parent, packet_editor))
+
+    modules = []
+    monkeypatch.setattr(
+        packet_editor_module,
+        "import_module",
+        lambda name: (modules.append(name) or
+                      types.SimpleNamespace(
+                          PayloadListViewWindow=PayloadListViewWindow)),
+    )
+
+    editor._open_payload_list_view()
+    monkeypatch.setattr(packet_editor_module, "__package__", "")
+    editor._open_payload_list_view()
+
+    assert modules == [
+        "sltgui.payload_list_view_window",
+        "payload_list_view_window",
+    ]
+    assert calls == [(editor, editor), (editor, editor)]
+
+
+def test_raw_detail_edit_tracks_only_raw_hex_cells():
+    """Raw hex edits are tracked separately from value-column edits."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor._detail_raw_row_id = None
+    editor._detail_raw_original_text = ""
+    editor._detail_value_row_id = None
+    editor._detail_value_original_text = ""
+    editor.detail_tree = types.SimpleNamespace(
+        get_cell_value=lambda cell: f"value:{cell[0]}")
+
+    editor._on_detail_edit_started(("raw-0", editor.DETAIL_HEX_COLUMN_ID))
+
+    assert editor._detail_raw_row_id == "raw-0"
+    assert editor._detail_raw_original_text == "value:raw-0"
+    assert editor._detail_value_row_id is None
+
+
+def test_raw_detail_hex_finish_ignores_incomplete_and_unchanged_edits():
+    """Raw hex editing ignores absent state, missing data, and unchanged text."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor._detail_raw_row_id = None
+    editor._selected_packet = lambda: None
+    event = types.SimpleNamespace(widget=types.SimpleNamespace(
+        get=lambda: "AA"))
+
+    editor._on_detail_raw_hex_finished(event)
+
+    packet = types.SimpleNamespace(data=b"\x00")
+    editor._selected_packet = lambda: packet
+    editor._detail_raw_row_id = "raw-0"
+    editor.struct_instance = None
+    editor.document = None
+    editor._on_detail_raw_hex_finished(event)
+
+    editor.document = object()
+    editor.struct_instance = object()
+    editor._detail_raw_row_id = "raw-0"
+    editor._on_detail_raw_hex_finished(event)
+
+    editor.struct_instance = None
+    editor._detail_raw_row_id = "raw-0"
+    editor._detail_raw_original_text = "AA"
+    editor._on_detail_raw_hex_finished(event)
+
+    assert editor._detail_raw_row_id is None
+
+
+def test_raw_detail_hex_finish_reports_invalid_hex_and_wrong_length(
+        monkeypatch):
+    """Invalid hex text and wrong byte counts retain the original payload."""
+    editor = object.__new__(PacketDataEditorWindow)
+    packet = types.SimpleNamespace(data=b"\x00\x01")
+    editor._selected_packet = lambda: packet
+    editor.struct_instance = None
+    editor.document = types.SimpleNamespace(data=b"\x00\x01")
+    editor.bytes_per_row = 2
+    editor._detail_raw_original_text = ""
+    refreshes = []
+    editor._refresh_detail_tree = lambda: refreshes.append(True)
+    errors = []
+    monkeypatch.setattr(
+        packet_editor_module.messagebox,
+        "showerror",
+        lambda *args, **kwargs: errors.append((args, kwargs)),
+    )
+    texts = ["GG", "AA"]
+
+    for text in texts:
+        editor._detail_raw_row_id = "raw-0"
+        event = types.SimpleNamespace(widget=types.SimpleNamespace(
+            get=lambda: text))
+        editor._on_detail_raw_hex_finished(event)
+
+    assert errors[0][0][0] == "Hex Error"
+    assert "non-hexadecimal" in errors[0][0][1]
+    assert errors[1][0] == (
+        "Hex Error",
+        "Hex data must contain exactly 2 bytes.",
+    )
+    assert all(call[1] == {"parent": editor} for call in errors)
+    assert refreshes == [True, True]
+
+
+def test_detail_open_and_lazy_load_handle_empty_or_missing_packet():
+    """Detail expansion skips empty focus and drops stale pending data."""
+    editor = object.__new__(PacketDataEditorWindow)
+    focused = [""]
+    loaded = []
+    editor.detail_tree = types.SimpleNamespace(focus=lambda: focused.pop(0))
+    editor._load_detail_children = loaded.append
+
+    editor._on_detail_open(None)
+
+    focused.append("row")
+    editor._on_detail_open(None)
+    assert loaded == ["row"]
+
+    lazy_editor = object.__new__(PacketDataEditorWindow)
+    lazy_editor._detail_pending = {
+        "row": (object(), 0, (), "placeholder"),
+    }
+    lazy_editor._selected_packet = lambda: None
+    lazy_editor.detail_tree = types.SimpleNamespace(
+        delete=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("stale placeholder should remain untouched")))
+
+    lazy_editor._load_detail_children("row")
+
+    assert lazy_editor._detail_pending == {}
+
+
+def test_lazy_detail_load_discards_pending_row_if_packet_disappeared():
+    """A row popped from pending data is not rebuilt without a selected packet."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor._detail_pending = {
+        "row": (object(), 0, (), "placeholder"),
+    }
+    editor._selected_packet = lambda: None
+    editor.detail_tree = types.SimpleNamespace(
+        delete=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("placeholder should not be deleted")))
+
+    editor._load_detail_children("row")
+
+    assert editor._detail_pending == {}
+
+
+def test_update_selected_packet_rows_in_place():
+    """Matching packet and fragment rows update their hex without rebuilding."""
+    packet_values = [1, "time", 4, "src", "dst", "UDP", "", 2, "Complete",
+                     "old"]
+    fragment_values = [1, "time", "", "", "", "", "", 1, "Offset 0", "old"]
+    updates = []
+    rows = {"0": packet_values, "0:fragment:0": fragment_values}
+
+    class TreeStub:
+        def selection(self):
+            return ("0",)
+
+        def get_children(self, row_id=None):
+            return ("0:fragment:0",) if row_id else ("0",)
+
+        def item(self, row_id, option=None, **kwargs):
+            if kwargs:
+                updates.append((row_id, kwargs["values"]))
+                rows[row_id] = kwargs["values"]
+                return None
+            assert option == "values"
+            return rows[row_id]
+
+    packet = types.SimpleNamespace(
+        sequence=4,
+        data=b"\xAA\xBB",
+        fragments=[types.SimpleNamespace(capture_offset=0, length=1)],
+    )
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.document = types.SimpleNamespace(
+        packets=[packet],
+        data=b"\xCC",
+    )
+    editor._packet_index_by_row_id = {"0": 0}
+    editor.tree = TreeStub()
+
+    assert editor._update_selected_in_place(4)
+    assert updates == [
+        ("0", [1, "time", 4, "src", "dst", "UDP", "", 2, "Complete",
+               "AA BB"]),
+        ("0:fragment:0", [1, "time", "", "", "", "", "", 1, "Offset 0",
+                          "CC"]),
+    ]
+
+
+def test_refresh_packets_returns_when_selected_row_was_updated():
+    """A successful in-place refresh avoids rebuilding packet rows."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor._update_selected_in_place = lambda sequence: sequence == 3
+    editor.tree = types.SimpleNamespace(
+        delete=lambda *_args: (_ for _ in ()).throw(
+            AssertionError("tree should not be rebuilt")))
+
+    editor._refresh_packets(3)
+
+
+def test_bytes_per_row_change_does_not_rebuild_struct_detail():
+    """Changing raw row size leaves a decoded struct detail tree untouched."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.bytes_per_row = 4
+    editor.bytes_per_row_combo = types.SimpleNamespace(get=lambda: "16")
+    editor.struct_instance = object()
+    editor._refresh_detail_tree = lambda: (_ for _ in ()).throw(
+        AssertionError("struct detail should not be rebuilt"))
+
+    editor._on_bytes_per_row_changed(None)
+
+    assert editor.bytes_per_row == 16
+
+
+def test_update_selected_in_place_rejects_stale_sequence():
+    """An outdated selection cannot update rows for another packet."""
+    editor = object.__new__(PacketDataEditorWindow)
+    editor.document = types.SimpleNamespace(
+        packets=[types.SimpleNamespace(sequence=4)],
+    )
+    editor._packet_index_by_row_id = {"0": 0}
+    editor.tree = types.SimpleNamespace(
+        selection=lambda: ("0",),
+        get_children=lambda *_args: ("0",),
+    )
+
+    assert not editor._update_selected_in_place(3)
